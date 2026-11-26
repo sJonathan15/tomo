@@ -364,7 +364,8 @@ class Sesion:
         if motor == "nada":
             raise RuntimeError("no encuentro el audio del sistema: Tomo necesita PipeWire (pw-record) o PulseAudio (parec)")
         pw = ["pw-record"]
-        fmt = ["--raw", "--rate", str(TASA), "--channels", "1", "--format", "s16", "-"]
+        # --raw existe desde PipeWire 1.2; en 1.0 (Ubuntu 24.04) no está y el stdout ya sale sin cabecera
+        fmt = (["--raw"] if pw_tiene_raw() else []) + ["--rate", str(TASA), "--channels", "1", "--format", "s16", "-"]
         fuentes = {}
         if motor == "pipewire" and self.ajustes.get("fuente", "app") in ("app", "zoom"):
             try:
@@ -394,7 +395,9 @@ class Sesion:
         threading.Thread(target=self._vigilar_audio, daemon=True).start()
 
     def _grabar(self, pista):
-        p = subprocess.Popen(self.fuentes[pista], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        p = subprocess.Popen(self.fuentes[pista], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        p.ultimas = deque(maxlen=3)      # lo último que dijo por stderr (se drena para que nunca se llene)
+        threading.Thread(target=lambda: [p.ultimas.append(l.decode(errors="replace").strip()) for l in p.stderr], daemon=True).start()
         self.procesos.append(p)
         self.grabadores[pista] = p
         threading.Thread(target=self._leer, args=(pista, p), daemon=True).start()
@@ -404,7 +407,9 @@ class Sesion:
         while not self.parar.wait(3):
             for pista, p in list(self.grabadores.items()):
                 if p.poll() is not None:
-                    log(f"la grabación «{pista}» se cortó; la relanzo")
+                    time.sleep(0.2)
+                    motivo = " ".join(getattr(p, "ultimas", [])) or f"código {p.returncode}"
+                    log(f"la grabación «{pista}» se cortó ({motivo[-200:]}); la relanzo")
                     if self.oido and pista == "sistema":
                         try:
                             self.oido.cerrar()
@@ -862,6 +867,18 @@ def motor_audio():
     except Exception:
         pass
     return "nada"
+
+
+_raw = {}
+
+
+def pw_tiene_raw():
+    if "v" not in _raw:
+        try:
+            _raw["v"] = "--raw" in subprocess.run(["pw-record", "--help"], capture_output=True, text=True, timeout=5).stdout
+        except Exception:
+            _raw["v"] = False
+    return _raw["v"]
 
 
 def monitor_pulse():

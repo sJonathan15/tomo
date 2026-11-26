@@ -57,8 +57,13 @@ def pedir(metodo, args, firma, siguiente):
                                     ruta, None, Gio.DBusSignalFlags.NO_MATCH_RULE, respuesta))
     opciones = args[-1]
     opciones["handle_token"] = GLib.Variant("s", token)
-    bus.call_sync("org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop", IFACE, metodo,
-                  GLib.Variant(firma, tuple(args)), None, Gio.DBusCallFlags.NONE, -1, None)
+    try:
+        bus.call_sync("org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop", IFACE, metodo,
+                      GLib.Variant(firma, tuple(args)), None, Gio.DBusCallFlags.NONE, -1, None)
+    except GLib.Error as e:          # p. ej. el escritorio no tiene portal de compartir pantalla
+        bus.signal_unsubscribe(sub[0])
+        decir(estado="error", paso=metodo, detalle=e.message.split(":")[-1].strip()[:200])
+        bucle.quit()
 
 
 def crear():
