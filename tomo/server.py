@@ -1063,7 +1063,7 @@ def listar_notas(q=""):
 
 def buscar_nota(nombre):
     """[[Wikilink]] → archivo (como Obsidian: por nombre, sin importar la carpeta ni mayúsculas)."""
-    n = plano(nombre.split("|")[0].split("#")[0].strip())
+    n = plano(nombre.split("|")[0].split("#")[0].strip().rsplit("/", 1)[-1].removesuffix(".md"))   # [[Carpeta/Nota]] también
     return next((f for f in archivos_notas(5000) if plano(f.stem) == n), None)
 
 

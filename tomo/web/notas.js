@@ -133,9 +133,29 @@ function pintarDoc() {
     }
     $("#n-vista").innerHTML = mdDoc(cuerpo);
   } else {
-    caja.innerHTML = `${barraNota(d)}<div class="n-hoja"><article class="doc-nota" id="n-vista">${chips ? `<div class="n-chips">${chips}</div>` : ""}${aviso}${mdDoc(cuerpo)}</article></div>`;
+    caja.innerHTML = `${barraNota(d)}<div class="n-hoja"><div class="n-lectura"><article class="doc-nota" id="n-vista">${chips ? `<div class="n-chips">${chips}</div>` : ""}${aviso}${mdDoc(cuerpo)}</article>
+      <nav class="n-indice" id="n-indice" aria-label="Secciones de la nota"></nav></div></div>`;
+    armarIndice();
   }
   marcarGuardado();
+}
+
+// índice de secciones (notas largas): se queda fijo al lado y marca dónde vas leyendo
+function armarIndice() {
+  const nav = $("#n-indice"), hoja = $(".n-hoja");
+  const titulos = $$("#n-vista h2, #n-vista h3");
+  titulos.forEach((h, i) => { h.id = `sec-${i}`; });
+  if (!nav || titulos.filter((h) => h.tagName === "H2").length < 3) { nav?.remove(); return; }
+  nav.innerHTML = `<p class="n-indice-tit">En esta nota</p>` + titulos.map((h, i) =>
+    `<button class="${h.tagName === "H3" ? "sub" : ""}" data-n-ir="sec-${i}">${esc(h.textContent)}</button>`).join("");
+  const marcar = () => {
+    const tope = hoja.getBoundingClientRect().top + 90;
+    let actual = titulos[0];
+    for (const h of titulos) if (h.getBoundingClientRect().top <= tope) actual = h;
+    $$("button", nav).forEach((b) => b.toggleAttribute("aria-current", b.dataset.nIr === actual.id));
+  };
+  hoja.addEventListener("scroll", marcar, { passive: true });
+  marcar();
 }
 
 function marcarGuardado(txt) {
@@ -212,10 +232,11 @@ function cambiarCasilla(i, marcada) {
 
 // ------------------------------------------------------------------ eventos
 document.addEventListener("click", async (e) => {
-  const b = e.target.closest("[data-n],[data-n-abrir],[data-n-modo],[data-n-wiki],[data-n-fuera]");
+  const b = e.target.closest("[data-n],[data-n-abrir],[data-n-modo],[data-n-wiki],[data-n-fuera],[data-n-ir]");
   if (!b || !$(".notas")) return;
   const ds = b.dataset;
   try {
+    if (ds.nIr) return document.getElementById(ds.nIr)?.scrollIntoView({ behavior: "smooth", block: "start" });
     if (ds.nAbrir) return abrirNota(ds.nAbrir);
     if (ds.nWiki) return abrirNota("", true, ds.nWiki);
     if (ds.nModo) {

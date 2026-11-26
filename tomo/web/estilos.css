@@ -658,7 +658,19 @@ body { font-size: 14px; }
 .n-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 5; background: var(--hoja); border: 1px solid var(--borde); border-radius: 12px;
           box-shadow: var(--sombra); padding: 6px; display: grid; gap: 4px; min-width: 200px; }
 .n-menu .btn { justify-content: flex-start; width: 100%; }
-.n-hoja { overflow: auto; flex: 1; }
+.n-hoja { overflow: auto; flex: 1; scroll-behavior: smooth; }
+.n-lectura { display: grid; grid-template-columns: minmax(0, 74ch) 220px; justify-content: center; gap: 28px; }
+.n-lectura:not(:has(.n-indice)) { grid-template-columns: minmax(0, 74ch); }
+.n-lectura .doc-nota { margin: 0; max-width: none; }
+.doc-nota h2, .doc-nota h3 { scroll-margin-top: 18px; }
+.n-indice { position: sticky; top: 0; align-self: start; padding: 32px 0 24px; display: grid; gap: 2px; max-height: calc(100dvh - 180px); overflow: auto; }
+.n-indice-tit { margin: 0 0 6px 10px; font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--tenue-2); }
+.n-indice button { text-align: left; background: none; border: 0; border-left: 2px solid var(--borde); padding: 5px 10px; font: inherit; font-size: 13px;
+                   line-height: 1.35; color: var(--tenue); cursor: pointer; transition: color .15s, border-color .15s; }
+.n-indice button.sub { padding-left: 22px; font-size: 12.5px; }
+.n-indice button:hover { color: var(--texto); }
+.n-indice button[aria-current] { color: var(--acento); border-left-color: var(--acento); font-weight: 600; }
+@media (max-width: 1280px) { .n-lectura { grid-template-columns: minmax(0, 74ch); } .n-indice { display: none; } }
 .doc-nota { max-width: 74ch; margin: 0 auto; padding: 28px 32px 80px; font-size: 15.5px; line-height: 1.7; color: var(--texto); }
 .doc-nota h1 { font-size: 30px; line-height: 1.2; letter-spacing: -.025em; margin: 0 0 14px; text-wrap: balance; }
 .doc-nota h2 { font-size: 20px; letter-spacing: -.015em; margin: 30px 0 8px; padding-top: 14px; border-top: 1px solid var(--borde-2); }
