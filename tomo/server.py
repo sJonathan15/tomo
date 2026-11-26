@@ -34,7 +34,7 @@ from . import modelos, pantalla
 from . import whisper as wh
 from .whisper import fiable, limpiar
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 BASE = Path(__file__).resolve().parent
 PUERTO = int(os.environ.get("TOMO_PUERTO", "47870"))
 TASA = 16000
@@ -58,7 +58,8 @@ AJUSTES_DEF = {"microfono": False, "pantalla": True, "globitos": True, "modelo":
                "fuente": "app",          # app: directo de Zoom/Teams… (no importa el volumen) · salida: lo que suena
                "apps": "zoom|teams|webex|skype|slack|discord", "monitor": "",
                "notas": "",              # carpeta de notas ("" = <RAIZ>/Notas); puede ser una bóveda de Obsidian
-               "nombre": "", "rol": "", "proyectos": ""}
+               "nombre": "", "rol": "", "proyectos": "",
+               "tema": "sistema", "bienvenida": False}     # tema: sistema|claro|noche · bienvenida: ya vio el asistente inicial
 VAD = VadOptions(threshold=0.5, min_silence_duration_ms=300, speech_pad_ms=150)
 MAX_TROZO = 15            # s: más largo que esto se corta en la pausa (o el punto más callado)
 PREGUNTA = re.compile(
@@ -940,6 +941,22 @@ def actualizar():
         ACTUALIZACION.update(estado="error", error=str(e))
 
 
+_github = {"t": 0.0, "datos": {}}
+
+
+def github():
+    """Estrellas del repo (cache 1 h) para el botón «Danos una estrella»."""
+    if time.time() - _github["t"] > 3600:
+        try:
+            d = json.load(urllib.request.urlopen(urllib.request.Request(
+                f"https://api.github.com/repos/{REPO}", headers={"User-Agent": "tomo", "Accept": "application/vnd.github+json"}), timeout=10))
+            _github["datos"] = {"estrellas": d.get("stargazers_count", 0), "url": d.get("html_url") or f"https://github.com/{REPO}"}
+        except Exception:
+            _github["datos"] = _github["datos"] or {"estrellas": None, "url": f"https://github.com/{REPO}"}
+        _github["t"] = time.time()
+    return _github["datos"]
+
+
 def sistema():
     """Lo que Tomo encontró en este equipo (para la pantalla de configuración)."""
     import shutil
@@ -947,7 +964,9 @@ def sistema():
     return {"version": VERSION, "escritorio": pantalla.escritorio(), "capturas": pantalla.herramientas(),
             "monitores": pantalla.monitores(), "audio": herramientas, "pipewire": all(herramientas[h] for h in ("pw-record", "pw-link", "pw-dump")),
             "cuda": wh.hay_cuda(), "whisper_sugerido": wh.modelo_sugerido(), "vram_gb": modelos.vram_gb(), "ram_gb": modelos.ram_gb(),
-            "datos": str(RAIZ), "notas": str(carpeta_notas()), "config": str(CONFIG), "puerto": PUERTO}
+            "datos": str(RAIZ), "notas": str(carpeta_notas()), "config": str(CONFIG), "puerto": PUERTO,
+            "whisper": {"cargado": WHISPER["nombre"], "donde": WHISPER["donde"]}, "repo": REPO,
+            "ollama": modelos.estado_local()}
 
 
 def prompt_agente():
@@ -1008,6 +1027,8 @@ class Manejador(BaseHTTPRequestHandler):
             return self._json(modelos.publico())
         if ruta == "/api/sistema":
             return self._json(sistema())
+        if ruta == "/api/github":
+            return self._json(github())
         if ruta == "/api/novedades":
             return self._json({"version": VERSION, "locales": novedades_locales(), "actualizacion": ACTUALIZACION})
         if ruta == "/api/prompt-agente":

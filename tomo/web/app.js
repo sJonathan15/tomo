@@ -679,6 +679,10 @@ const vt = (v) => String(v || "0").split(".").map((x) => +x || 0).reduce((a, x) 
 async function mostrarNovedadesSiToca() {
   if (novMostradas || !estado?.version) return;
   novMostradas = true;
+  if (!estado.ajustes?.bienvenida && typeof abrirBienvenida === "function") {   // primer uso: asistente, no novedades
+    localStorage.setItem(VISTO, estado.version);
+    return abrirBienvenida();
+  }
   const visto = localStorage.getItem(VISTO);
   if (visto === estado.version) return;
   try {
@@ -716,6 +720,7 @@ async function sondear() {
     revisarVersion();
     pintarPildoraAct();
     mostrarNovedadesSiToca();
+    if (typeof cicloExtras === "function") cicloExtras();
     $("#servicio").textContent = "motor en línea";
     $("#servicio").className = "servicio ok";
   } catch {
@@ -826,7 +831,8 @@ document.addEventListener("click", async (e) => {
       estado = await api("/api/ajustes", { monitor: ds.monitor });
       avisar(ds.monitor ? "Listo: solo miro esa pantalla" : "Miro todas las pantallas");
       setTimeout(refrescarVivo, 3200);
-      if (ruta() === "/ajustes") { modo = ""; pintar(); } else refrescar();
+      if (typeof bienvenidaAbierta !== "undefined" && bienvenidaAbierta) pintarPaso();
+      else if (ruta().startsWith("/ajustes")) { modo = ""; pintar(); } else refrescar();
     } else if ("verMiniaturas" in ds) {
       verMiniaturas = !verMiniaturas;
       if (verMiniaturas && monitores) monitores.t = Date.now();

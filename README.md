@@ -22,11 +22,14 @@ Un proyecto de **MIRAI** · 未来 · *el futuro, hoy*.
 - **Historial completo** de lo que se dijo: buscar, marcar frases y copiarlas.
 - **Nota final en Markdown** (compatible con Obsidian): resumen, temas, herramientas mencionadas, ideas para tus proyectos y preguntas.
 - **Nunca se queda sin ojos**: varias APIs en cadena y, si todas se quedan sin cupo, tu modelo local de Ollama.
-- **Claro u oscuro** según tu sistema, con los colores de MIRAI.
+- **Claro u oscuro** según tu sistema (o el que elijas), con los colores de MIRAI.
+- **Asistente de bienvenida y recorrido guiado**: en el primer uso revisa tu equipo, te ayuda a elegir el modelo de IA y la pantalla; el botón «?» te muestra cada parte de la app.
 
 | Modo noche | Modelos de IA | Novedades al actualizar |
 |---|---|---|
 | ![](docs/reunion-noche.png) | ![](docs/ajustes.png) | ![](docs/novedades.png) |
+
+![Asistente de bienvenida](docs/bienvenida.png)
 
 ## Instalar
 
@@ -96,3 +99,13 @@ MIT © 2026 Jonathan Cañar · MIRAI. Nombre, icono y diseño son originales de 
 - Install: `curl -fsSL https://raw.githubusercontent.com/sJonathan15/tomo/main/install.sh | bash` (Ubuntu/Debian, Fedora, Arch, openSUSE · KDE, GNOME, Hyprland, Sway, niri, X11 · PipeWire required).
 - AI models: any OpenAI-compatible API (Gemini, NVIDIA NIM, OpenRouter, Groq, OpenAI…) chained in order, plus a local Ollama vision model as the last fallback. Tomo detects installed models and recommends one for your GPU.
 - The UI is in Spanish for now; transcription and answers follow the meeting language (`Settings › Language`).
+
+---
+
+<div align="center">
+
+**¿Te sirve Tomo?** Dale una ⭐ al repo: ayuda a que más personas lo encuentren.
+
+Hecho con cariño en Ecuador por **MIRAI** · 未来
+
+</div>

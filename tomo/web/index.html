@@ -20,10 +20,16 @@
     <a href="#/ajustes" data-vista="ajustes" class="nav">Ajustes</a>
   </nav>
   <button id="pildora-act" class="pildora-act" hidden></button>
+  <a id="btn-estrella" class="btn-estrella" href="https://github.com/sJonathan15/tomo" target="_blank" rel="noopener" title="Apoya a Tomo con una estrella en GitHub">
+    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Z"/></svg>
+    <span>Estrella</span><b id="estrellas-n" class="num"></b></a>
+  <button id="btn-ayuda" class="btn-ayuda" title="Ver el recorrido" aria-label="Ver el recorrido por la app">?</button>
   <span id="servicio" class="servicio">conectando…</span>
 </header>
 <main id="vista" tabindex="-1"></main>
+<footer id="barra-estado" class="barra-estado" aria-label="Estado de Tomo"></footer>
 <div id="aviso" class="aviso" role="status" aria-live="polite"></div>
 <script src="/app.js"></script>
+<script src="/recorrido.js"></script>
 </body>
 </html>

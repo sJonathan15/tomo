@@ -1,14 +1,71 @@
 [
   {
+    "version": "0.2.0",
+    "fecha": "2026-11-26",
+    "titulo": "Tomo te recibe mejor",
+    "mejoras": [
+      {
+        "icono": "🧭",
+        "titulo": "Asistente de bienvenida",
+        "texto": "Cinco pasos para dejar todo listo: tu perfil, lo que tiene tu equipo, el modelo de IA y la pantalla de la reunión."
+      },
+      {
+        "icono": "✨",
+        "titulo": "Recorrido guiado",
+        "texto": "Pulsa «?» arriba y Tomo te muestra cada parte de la app, paso a paso."
+      },
+      {
+        "icono": "🌗",
+        "titulo": "Claro, noche o como el sistema",
+        "texto": "Elige la apariencia que prefieras; por defecto sigue a tu escritorio."
+      },
+      {
+        "icono": "🔤",
+        "titulo": "Letra nueva",
+        "texto": "Plus Jakarta Sans en toda la app: más limpia y fácil de leer."
+      },
+      {
+        "icono": "📊",
+        "titulo": "Barra de estado",
+        "texto": "Abajo ves de un vistazo si estoy escuchando, si la IA está lista y qué pantalla miro."
+      },
+      {
+        "icono": "⭐",
+        "titulo": "Apoya a Tomo",
+        "texto": "Si te sirve, deja una estrella en GitHub: ayuda a que más personas lo encuentren."
+      }
+    ]
+  },
+  {
     "version": "0.1.0",
     "fecha": "2026-11-26",
     "titulo": "Hola, soy Tomo",
     "mejoras": [
-      {"icono": "👂", "titulo": "Escucho la reunión", "texto": "Zoom, Teams o Webex directo de la app, aunque tengas el volumen bajo. Whisper corre en tu equipo."},
-      {"icono": "💬", "titulo": "Te soplo qué responder", "texto": "Detecto las preguntas (sin repetirlas) y te doy una respuesta lista para decir o pegar en el chat."},
-      {"icono": "✍️", "titulo": "Resuelvo ejercicios", "texto": "Pega el enunciado o una captura y marca las reglas que dio el profe en la transcripción."},
-      {"icono": "🖥️", "titulo": "Miro la pantalla correcta", "texto": "Elige el monitor de la reunión y mira en vivo lo que veo."},
-      {"icono": "🔗", "titulo": "Nunca me quedo sin ojos", "texto": "Varias APIs en cadena y, si todas fallan, tu modelo local de Ollama."}
+      {
+        "icono": "👂",
+        "titulo": "Escucho la reunión",
+        "texto": "Zoom, Teams o Webex directo de la app, aunque tengas el volumen bajo. Whisper corre en tu equipo."
+      },
+      {
+        "icono": "💬",
+        "titulo": "Te soplo qué responder",
+        "texto": "Detecto las preguntas (sin repetirlas) y te doy una respuesta lista para decir o pegar en el chat."
+      },
+      {
+        "icono": "✍️",
+        "titulo": "Resuelvo ejercicios",
+        "texto": "Pega el enunciado o una captura y marca las reglas que dio el profe en la transcripción."
+      },
+      {
+        "icono": "🖥️",
+        "titulo": "Miro la pantalla correcta",
+        "texto": "Elige el monitor de la reunión y mira en vivo lo que veo."
+      },
+      {
+        "icono": "🔗",
+        "titulo": "Nunca me quedo sin ojos",
+        "texto": "Varias APIs en cadena y, si todas fallan, tu modelo local de Ollama."
+      }
     ]
   }
 ]
