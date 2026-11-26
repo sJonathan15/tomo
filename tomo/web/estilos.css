@@ -625,8 +625,7 @@ body { font-size: 14px; }
 
 /* ---------------------------------------------------------------- Notas (propias de Tomo; Obsidian es opcional) */
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-.notas { height: calc(100dvh - var(--alto-barra) - var(--alto-pie)); display: grid; grid-template-columns: minmax(250px, 320px) minmax(0, 1fr);
-         max-width: 1440px; margin: 0 auto; }
+.notas { height: calc(100dvh - var(--alto-barra) - var(--alto-pie)); display: grid; grid-template-columns: minmax(260px, 330px) minmax(0, 1fr); }
 .notas-lista { border-right: 1px solid var(--borde); display: flex; flex-direction: column; min-height: 0; padding: 22px 0 0; }
 .notas-cab { display: flex; align-items: center; justify-content: space-between; padding: 0 18px 12px; }
 .notas-cab h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -.02em; }
@@ -686,7 +685,7 @@ body { font-size: 14px; }
 .doc-nota blockquote { margin: 0 0 12px; padding: 4px 0 4px 16px; border-left: 3px solid var(--barra); color: var(--tenue); }
 .doc-nota hr { border: 0; border-top: 1px solid var(--borde); margin: 24px 0; }
 .doc-nota mark { background: var(--marca); color: inherit; border-radius: 3px; padding: 0 2px; }
-.doc-nota .wiki { background: none; border: 0; padding: 0; font: inherit; color: var(--acento); cursor: pointer; border-bottom: 1px dashed currentColor; }
+.doc-nota .wiki { text-align: left; background: none; border: 0; padding: 0; font: inherit; color: var(--acento); cursor: pointer; border-bottom: 1px dashed currentColor; }
 .tabla-doc { overflow: auto; margin: 0 0 14px; border: 1px solid var(--borde); border-radius: 12px; }
 .tabla-doc table { border-collapse: collapse; width: 100%; font-size: 14px; }
 .tabla-doc th, .tabla-doc td { padding: 8px 12px; text-align: left; vertical-align: top; border-top: 1px solid var(--borde-2); }

@@ -174,7 +174,7 @@ async function pintarNotas(ruta) {
     <section class="notas-doc" id="n-doc" aria-live="polite"></section></div>`;
   N.editando = false; N.sucio = false;
   await cargarListaNotas();
-  const destino = ruta || (N.actual && N.lista.some((n) => n.ruta === N.actual.ruta) ? N.actual.ruta : N.lista[0]?.ruta);
+  const destino = ruta || (N.actual && N.lista.some((n) => n.ruta === N.actual.ruta) ? N.actual.ruta : (N.lista.find((n) => n.nombre.toLowerCase() !== "indice") || N.lista[0])?.ruta);
   if (destino) await abrirNota(destino, false); else { N.actual = null; pintarDoc(); }
 }
 
