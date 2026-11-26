@@ -1,5 +1,22 @@
 [
  {
+  "version": "0.3.1",
+  "fecha": "2026-11-26",
+  "titulo": "Ubuntu oye la reunión",
+  "mejoras": [
+   {
+    "icono": "🎧",
+    "titulo": "Audio en Ubuntu 24.04",
+    "texto": "Tomo ya oye la reunión con la versión de PipeWire de Ubuntu 24.04 (antes la grabación se cortaba sola)."
+   },
+   {
+    "icono": "🧭",
+    "titulo": "Notas más cómodas",
+    "texto": "La nota usa toda la pantalla, con un índice de secciones al lado para saltar a lo que buscas."
+   }
+  ]
+ },
+ {
   "version": "0.3.0",
   "fecha": "2026-11-26",
   "titulo": "Notas propias y más a prueba de fallos",

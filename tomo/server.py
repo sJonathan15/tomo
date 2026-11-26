@@ -36,7 +36,7 @@ from . import modelos, pantalla
 from . import whisper as wh
 from .whisper import fiable, limpiar
 
-VERSION = "0.3.0"
+VERSION = "0.3.1"
 BASE = Path(__file__).resolve().parent
 PUERTO = int(os.environ.get("TOMO_PUERTO", "47870"))
 TASA = 16000
