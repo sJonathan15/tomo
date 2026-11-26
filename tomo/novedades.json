@@ -1,0 +1,14 @@
+[
+  {
+    "version": "0.1.0",
+    "fecha": "2026-11-26",
+    "titulo": "Hola, soy Tomo",
+    "mejoras": [
+      {"icono": "👂", "titulo": "Escucho la reunión", "texto": "Zoom, Teams o Webex directo de la app, aunque tengas el volumen bajo. Whisper corre en tu equipo."},
+      {"icono": "💬", "titulo": "Te soplo qué responder", "texto": "Detecto las preguntas (sin repetirlas) y te doy una respuesta lista para decir o pegar en el chat."},
+      {"icono": "✍️", "titulo": "Resuelvo ejercicios", "texto": "Pega el enunciado o una captura y marca las reglas que dio el profe en la transcripción."},
+      {"icono": "🖥️", "titulo": "Miro la pantalla correcta", "texto": "Elige el monitor de la reunión y mira en vivo lo que veo."},
+      {"icono": "🔗", "titulo": "Nunca me quedo sin ojos", "texto": "Varias APIs en cadena y, si todas fallan, tu modelo local de Ollama."}
+    ]
+  }
+]
