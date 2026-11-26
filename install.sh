@@ -119,11 +119,15 @@ Terminal=false
 Categories=Office;Education;AudioVideo;
 StartupWMClass=tomo
 EOF
-systemctl --user daemon-reload
-systemctl --user enable --now tomo.service >/dev/null 2>&1 || systemctl --user restart tomo.service
-systemctl --user restart tomo.service
-
-for _ in $(seq 1 30); do curl -s -o /dev/null "http://127.0.0.1:$PUERTO/api/estado" && break; sleep 0.5; done
-azul "✓ Tomo instalado. Ábrelo desde el menú («Tomo») o con:  tomo abrir"
+if systemctl --user show-environment >/dev/null 2>&1; then
+  systemctl --user daemon-reload
+  systemctl --user enable tomo.service >/dev/null 2>&1 || true
+  systemctl --user restart tomo.service
+  for _ in $(seq 1 30); do curl -s -o /dev/null "http://127.0.0.1:$PUERTO/api/estado" && break; sleep 0.5; done
+  azul "✓ Tomo instalado. Ábrelo desde el menú («Tomo») o con:  tomo abrir"
+else
+  azul "✓ Tomo instalado (sin servicios de usuario de systemd en este sistema)."
+  gris "  Inícialo con:  cd $DESTINO && TOMO_PUERTO=$PUERTO .venv/bin/python -m tomo"
+fi
 gris "  Primer paso en la app: Ajustes › Modelos de IA (una API gratis o tu modelo local de Ollama)."
 case ":$PATH:" in *":$BIN:"*) ;; *) gris "  Nota: agrega $BIN a tu PATH para usar el comando «tomo»." ;; esac
