@@ -202,6 +202,81 @@ def recorte(png: Path, nombre: str):
     return f"{round(m['w'] * fx)}x{round(m['h'] * fy)}+{round((m['x'] - x0) * fx)}+{round((m['y'] - y0) * fy)}"
 
 
+# ------------------------------------------------------------------ compartir pantalla (ScreenCast) en GNOME/Wayland
+COMPARTIR = Path(__file__).with_name("portal_compartir.py")
+_RUN = Path(os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}") / "tomo"
+CUADRO = _RUN / "cuadro.jpg"
+TOKEN = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "tomo" / "compartir.token"
+_comp = {"proc": None, "estado": "", "detalle": "", "desde": 0.0}
+
+
+def usar_compartir():
+    """GNOME en Wayland (Ubuntu): capturar con el portal hace destello y sonido y toma todas las pantallas.
+    Ahí se comparte pantalla como Zoom: se elige una vez la pantalla o la ventana y llegan cuadros sin destello."""
+    if os.environ.get("TOMO_CAPTURA") == "compartir":
+        return True
+    if os.environ.get("TOMO_CAPTURA"):
+        return False
+    esc = escritorio()
+    return bool(entorno().get("WAYLAND_DISPLAY")) and (esc == "gnome" or (esc == "wayland" and not shutil.which("grim")))
+
+
+def gstreamer_listo():
+    r = subprocess.run(["/usr/bin/python3", "-c", "import gi; gi.require_version('Gst','1.0'); from gi.repository import Gst; Gst.init(None);"
+                        "import sys; sys.exit(0 if Gst.ElementFactory.find('pipewiresrc') and Gst.ElementFactory.find('jpegenc') else 1)"],
+                       capture_output=True, timeout=10, env=entorno())
+    return r.returncode == 0
+
+
+def compartir(elegir=False):
+    """Arranca (o reinicia con «elegir» para volver a preguntar qué compartir) el ayudante de ScreenCast."""
+    p = _comp["proc"]
+    if p and p.poll() is None and not elegir:
+        return _comp
+    if p and p.poll() is None:
+        p.terminate()
+    _RUN.mkdir(parents=True, exist_ok=True)
+    CUADRO.unlink(missing_ok=True)
+    cmd = ["/usr/bin/python3", str(COMPARTIR), str(CUADRO), str(TOKEN)] + (["--elegir"] if elegir else [])
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, env=entorno())
+    _comp.update(proc=p, estado="eligiendo", detalle="", desde=time.time())
+
+    def leer():
+        for linea in p.stdout:
+            try:
+                d = json.loads(linea)
+            except Exception:
+                continue
+            _comp.update(estado=d.get("estado", ""), detalle=d.get("detalle", ""))
+        if _comp["proc"] is p:
+            _comp["estado"] = _comp["estado"] if _comp["estado"] in ("cancelado", "error") else "detenido"
+    threading.Thread(target=leer, daemon=True).start()
+    return _comp
+
+
+def estado_compartir():
+    p = _comp["proc"]
+    return {"activo": usar_compartir(), "estado": _comp["estado"] if p else "", "detalle": _comp["detalle"],
+            "recordado": TOKEN.exists()}
+
+
+def _desde_compartir(png: Path):
+    c = compartir()
+    if c["estado"] == "cancelado":                   # el usuario dijo que no: no volver a abrir la ventana sola
+        raise RuntimeError("no se eligió qué compartir: pulsa «Elegir qué compartir» en Tomo")
+    if c["estado"] in ("error", "detenido") and TOKEN.exists() and time.time() - c["desde"] > 5:
+        compartir()                                  # se cayó: reintentar (con lo recordado no vuelve a preguntar)
+    for _ in range(30):                              # el primer cuadro tarda un poco
+        if CUADRO.exists():
+            shutil.copyfile(CUADRO, png)             # magick reconoce el JPEG por su contenido
+            return png
+        if _comp["estado"] in ("cancelado", "error"):
+            break
+        time.sleep(0.2)
+    raise RuntimeError("esperando que elijas qué compartir" if _comp["estado"] == "eligiendo"
+                       else f"compartir pantalla: {_comp['estado'] or 'sin cuadros'} {_comp['detalle']}".strip())
+
+
 _ultima_buena = {"herramienta": None}
 
 
@@ -209,6 +284,8 @@ def capturar(png: Path, monitor=""):
     """Deja en `png` la pantalla elegida (o todo el escritorio). Lanza excepción si nada funciona."""
     with _lock:
         png.parent.mkdir(parents=True, exist_ok=True)
+        if usar_compartir():
+            return _desde_compartir(png)            # ya es solo lo que el usuario eligió compartir
         opciones = herramientas()
         if _ultima_buena["herramienta"] in opciones:
             opciones.remove(_ultima_buena["herramienta"])
@@ -247,7 +324,17 @@ _vivo = {"t": 0.0, "jpg": None, "monitor": None}
 
 
 def vivo(tmp: Path, monitor=""):
-    """Lo que Tomo ve ahora: a lo sumo una captura cada 3 s aunque varias ventanas lo pidan."""
+    """Lo que Tomo ve ahora: a lo sumo una captura cada 3 s aunque varias ventanas lo pidan.
+    Compartiendo pantalla se devuelve el último cuadro (no cuesta nada). Si la única forma de capturar es el portal
+    de capturas (destello y sonido), la vista en vivo NO toma capturas nuevas: muestra la última que se analizó."""
+    if usar_compartir():
+        try:
+            capturar(tmp, monitor)
+            return jpeg(tmp, 1100)
+        finally:
+            tmp.unlink(missing_ok=True)
+    if (herramientas() or [""])[0] == "portal":
+        return _vivo["jpg"]
     if time.time() - _vivo["t"] > 3 or _vivo["jpg"] is None or _vivo["monitor"] != monitor:
         try:
             capturar(tmp, monitor)

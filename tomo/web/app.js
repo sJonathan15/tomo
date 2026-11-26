@@ -180,7 +180,17 @@ function piezaPantalla(s, enVivo) {
 `;
 }
 
+function piezaCompartir(c) {
+  const txt = { compartiendo: "Compartiendo solo lo que elegiste, sin destellos.", eligiendo: "Elige en la ventana del sistema la pantalla o la ventana de Zoom.",
+    cancelado: "No elegiste qué compartir.", error: "Hubo un problema al compartir.", detenido: "Se detuvo; vuelve a elegir." }[c.estado] ||
+    "Como en Zoom: eliges una vez la pantalla o la ventana de la reunión.";
+  return `<div class="compartir ${esc(c.estado)}"><span>${txt}</span>
+    <button class="btn chico ${c.estado === "compartiendo" ? "fantasma" : "primario"}" data-compartir="${c.recordado || c.estado === "compartiendo" ? "elegir" : "empezar"}">
+      ${c.estado === "compartiendo" ? "Cambiar" : "Elegir qué compartir"}</button></div>`;
+}
+
 function piezaSelector(enVivo) {
+  if (enVivo && estado?.compartir?.activo) return piezaCompartir(estado.compartir);
   const mons = monitores?.monitores || [];
   const elegido = estado?.ajustes?.monitor || "";
   const selector = enVivo && mons.length > 1 ? `<div class="monitores">
@@ -837,6 +847,10 @@ document.addEventListener("click", async (e) => {
       setTimeout(refrescarVivo, 3200);
       if (typeof bienvenidaAbierta !== "undefined" && bienvenidaAbierta) pintarPaso();
       else if (ruta().startsWith("/ajustes")) { modo = ""; pintar(); } else refrescar();
+    } else if (ds.compartir) {
+      estado.compartir = await api("/api/compartir", { elegir: ds.compartir === "elegir" });
+      avisar("Elige en la ventana del sistema qué compartir");
+      refrescar();
     } else if ("verMiniaturas" in ds) {
       verMiniaturas = !verMiniaturas;
       if (verMiniaturas && monitores) monitores.t = Date.now();

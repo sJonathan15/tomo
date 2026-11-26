@@ -34,7 +34,7 @@ from . import modelos, pantalla
 from . import whisper as wh
 from .whisper import fiable, limpiar
 
-VERSION = "0.2.1"
+VERSION = "0.2.2"
 BASE = Path(__file__).resolve().parent
 PUERTO = int(os.environ.get("TOMO_PUERTO", "47870"))
 TASA = 16000
@@ -157,6 +157,7 @@ def captura(destino: Path):
     try:
         pantalla.capturar(png, leer_ajustes().get("monitor") or "")
         destino.write_bytes(pantalla.jpeg(png, 1600, 75))
+        pantalla._vivo.update(t=time.time(), jpg=pantalla.jpeg(png, 1100), monitor=leer_ajustes().get("monitor") or "")
         h = np.frombuffer(pantalla.huella(png), np.uint8).astype(np.int16)
         return base64.b64encode(destino.read_bytes()).decode(), h
     except Exception as e:
@@ -891,8 +892,9 @@ def estado():
     s = SESION["actual"]
     with LIBRE["lock"]:
         libres = [publico(e) for e in reversed(LIBRE["ejercicios"])]
+    comp = pantalla.estado_compartir() if pantalla.usar_compartir() else None
     web = max((f.stat().st_mtime for f in WEB.glob("*") if f.is_file()), default=0)   # la app se recarga sola si cambia
-    return {"en_linea": True, "version": VERSION, "web": int(web), "ajustes": leer_ajustes(), "modelos_listos": modelos.hay_algo(),
+    return {"en_linea": True, "version": VERSION, "web": int(web), "ajustes": leer_ajustes(), "modelos_listos": modelos.hay_algo(), "compartir": comp,
             "actualizacion": (ACTUALIZACION["disponible"] or {}).get("version", ""), "act_estado": ACTUALIZACION["estado"], "sesion": s.resumen() if s else None, "ejercicios_libres": libres}
 
 
@@ -974,6 +976,7 @@ def sistema():
     return {"version": VERSION, "escritorio": pantalla.escritorio(), "capturas": pantalla.herramientas(),
             "monitores": pantalla.monitores(), "audio": herramientas, "pipewire": all(herramientas[h] for h in ("pw-record", "pw-link", "pw-dump")),
             "cuda": wh.hay_cuda(), "whisper_sugerido": wh.modelo_sugerido(), "vram_gb": modelos.vram_gb(), "ram_gb": modelos.ram_gb(),
+            "compartir": pantalla.estado_compartir(), "gstreamer": pantalla.gstreamer_listo() if pantalla.usar_compartir() else None,
             "datos": str(RAIZ), "notas": str(carpeta_notas()), "config": str(CONFIG), "puerto": PUERTO,
             "whisper": {"cargado": WHISPER["nombre"], "donde": WHISPER["donde"]}, "repo": REPO,
             "ollama": modelos.estado_local()}
@@ -1120,6 +1123,9 @@ class Manejador(BaseHTTPRequestHandler):
             uri = "obsidian://open?path=" + urllib.parse.quote(str(f)) if f.suffix == ".md" and boveda_obsidian(f) else str(f)
             subprocess.Popen(["xdg-open", uri], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             return self._json({"ok": True})
+        if ruta == "/api/compartir":
+            pantalla.compartir(elegir=bool(d.get("elegir")))
+            return self._json(pantalla.estado_compartir())
         if ruta == "/api/actualizar":
             threading.Thread(target=actualizar, daemon=True).start()
             return self._json({"ok": True})

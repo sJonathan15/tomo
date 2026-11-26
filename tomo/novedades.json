@@ -1,5 +1,27 @@
 [
   {
+    "version": "0.2.2",
+    "fecha": "2026-11-26",
+    "titulo": "Comparto pantalla como Zoom",
+    "mejoras": [
+      {
+        "icono": "🪟",
+        "titulo": "Eliges qué miro",
+        "texto": "En Ubuntu (GNOME) eliges una vez la pantalla o la ventana de Zoom, igual que al compartir en una reunión. Lo recuerdo para la próxima."
+      },
+      {
+        "icono": "🤫",
+        "titulo": "Sin destellos ni sonido",
+        "texto": "Ya no hago capturas con flash: recibo la imagen en silencio y solo de lo que elegiste."
+      },
+      {
+        "icono": "🔁",
+        "titulo": "Cambiar cuando quieras",
+        "texto": "En «Lo que ve ahora» pulsa «Cambiar» para elegir otra pantalla o ventana."
+      }
+    ]
+  },
+  {
     "version": "0.2.1",
     "fecha": "2026-11-26",
     "titulo": "Ahora sí veo y oigo en Ubuntu",

@@ -618,3 +618,7 @@ body { font-size: 14px; }
 .tostada-estrella > div { flex: 1; }
 @media (max-width: 640px) { .asis-campos { grid-template-columns: 1fr; } .dep { grid-template-columns: 12px 1fr; } .dep span:last-child { grid-column: 2; }
   .btn-estrella span { display: none; } }
+
+.compartir { display: flex; align-items: center; gap: 10px; justify-content: space-between; margin: 0 0 8px; padding: 8px 10px; border-radius: 10px;
+             background: var(--acento-palido); font-size: 12.5px; color: var(--texto); }
+.compartir.cancelado, .compartir.error, .compartir.detenido { background: #fef3c7; color: #78350f; }
