@@ -34,7 +34,7 @@ from . import modelos, pantalla
 from . import whisper as wh
 from .whisper import fiable, limpiar
 
-VERSION = "0.2.2"
+VERSION = "0.2.3"
 BASE = Path(__file__).resolve().parent
 PUERTO = int(os.environ.get("TOMO_PUERTO", "47870"))
 TASA = 16000
@@ -1040,6 +1040,12 @@ class Manejador(BaseHTTPRequestHandler):
             return self._json(modelos.publico())
         if ruta == "/api/sistema":
             return self._json(sistema())
+        if ruta == "/api/nota":
+            f = Path(urllib.parse.unquote((urllib.parse.parse_qs(self.path.partition("?")[2]).get("ruta") or [""])[0])).resolve()
+            if f.suffix != ".md" or not f.is_file() or not (carpeta_notas().resolve() in f.parents or RAIZ.resolve() in f.parents):
+                return self._json({"error": "esa nota no se puede leer"}, 400)
+            return self._json({"ruta": str(f), "nombre": f.stem, "texto": f.read_text(encoding="utf-8"),
+                               "obsidian": bool(boveda_obsidian(f))})
         if ruta == "/api/github":
             return self._json(github())
         if ruta == "/api/novedades":
@@ -1120,8 +1126,13 @@ class Manejador(BaseHTTPRequestHandler):
             notas = carpeta_notas().resolve()
             if not f.is_file() or not (notas in f.parents or RAIZ.resolve() in f.parents):
                 return self._json({"error": "esa ruta no se puede abrir"}, 400)
-            uri = "obsidian://open?path=" + urllib.parse.quote(str(f)) if f.suffix == ".md" and boveda_obsidian(f) else str(f)
-            subprocess.Popen(["xdg-open", uri], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            boveda = boveda_obsidian(f) if f.suffix == ".md" else None
+            if boveda and d.get("en") != "carpeta":   # vault + file: lo más fiable (también con Obsidian en Flatpak)
+                rel = f.relative_to(boveda).with_suffix("").as_posix()
+                uri = f"obsidian://open?vault={urllib.parse.quote(boveda.name)}&file={urllib.parse.quote(rel)}"
+            else:
+                uri = str(f.parent if d.get("en") == "carpeta" else f)
+            subprocess.Popen(["xdg-open", uri], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=pantalla.entorno())
             return self._json({"ok": True})
         if ruta == "/api/compartir":
             pantalla.compartir(elegir=bool(d.get("elegir")))

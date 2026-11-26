@@ -796,6 +796,28 @@ function usarSeleccion() {
   avisar(`${nuevas.length} ${plural(nuevas.length, "frase")} como reglas del ejercicio`);
 }
 
+// ------------------------------------------------------------------ ver la nota dentro de Tomo
+let notaAbierta = "";
+async function verNota(ruta) {
+  let d;
+  try { d = await api(`/api/nota?ruta=${encodeURIComponent(ruta)}`); } catch (err) { avisar(err.message); return; }
+  notaAbierta = d.texto;
+  const cuerpo = d.texto.replace(/^---[\s\S]*?---\n/, "");
+  document.querySelector(".velo-nota")?.remove();
+  const v = document.createElement("div");
+  v.className = "velo velo-nota";
+  v.innerHTML = `<aside class="hoja-nota" role="dialog" aria-modal="true" aria-label="Nota de la reunión">
+    <header><div><span class="sub" style="margin:0">Nota de la reunión</span><h2>${esc(d.nombre)}</h2></div>
+      <button class="btn chico fantasma" data-cerrar-nota aria-label="Cerrar">✕</button></header>
+    <div class="acc-nota">
+      ${d.obsidian ? `<button class="btn chico primario" data-nota-en="obsidian" data-ruta="${esc(d.ruta)}">Abrir en Obsidian</button>` : `<button class="btn chico primario" data-nota-en="archivo" data-ruta="${esc(d.ruta)}">Abrir el archivo</button>`}
+      <button class="btn chico" data-nota-en="carpeta" data-ruta="${esc(d.ruta)}">Abrir la carpeta</button>
+      <button class="btn chico" data-copiar-nota>Copiar Markdown</button></div>
+    <article class="msj-cop cuerpo-nota">${md(cuerpo)}</article></aside>`;
+  document.body.appendChild(v);
+  v.addEventListener("click", (e) => { if (e.target === v) v.remove(); });
+}
+
 // ------------------------------------------------------------------ eventos
 document.addEventListener("click", async (e) => {
   const li = e.target.closest(".linea");
@@ -900,8 +922,14 @@ document.addEventListener("click", async (e) => {
       copiar(tr.lineas.map((l) => `[${hora(l.t)}] ${l.quien}: ${l.texto}`).join("\n"), "Transcripción copiada");
     } else if (ds.abrir) {
       e.stopPropagation();
-      await api("/api/abrir", { ruta: ds.abrir });
-      avisar("Abriendo la nota…");
+      await verNota(ds.abrir);
+    } else if (ds.notaEn) {
+      await api("/api/abrir", { ruta: ds.ruta, en: ds.notaEn });
+      avisar(ds.notaEn === "carpeta" ? "Abriendo la carpeta…" : "Abriendo en Obsidian…");
+    } else if ("cerrarNota" in ds) {
+      document.querySelector(".velo-nota")?.remove();
+    } else if ("copiarNota" in ds) {
+      copiar(notaAbierta, "Nota copiada");
     } else if (ds.ir) {
       location.hash = ds.ir;
     }

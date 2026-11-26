@@ -1,5 +1,22 @@
 [
   {
+    "version": "0.2.3",
+    "fecha": "2026-11-26",
+    "titulo": "Tus notas, a un clic",
+    "mejoras": [
+      {
+        "icono": "📝",
+        "titulo": "La nota se abre en Tomo",
+        "texto": "«Abrir la nota» la muestra al instante con formato, para leerla o copiarla."
+      },
+      {
+        "icono": "💎",
+        "titulo": "Obsidian sin fallos",
+        "texto": "«Abrir en Obsidian» usa tu bóveda y el archivo exacto, también con Obsidian instalado como Flatpak."
+      }
+    ]
+  },
+  {
     "version": "0.2.2",
     "fecha": "2026-11-26",
     "titulo": "Comparto pantalla como Zoom",
