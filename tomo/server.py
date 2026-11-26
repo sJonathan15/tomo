@@ -34,7 +34,7 @@ from . import modelos, pantalla
 from . import whisper as wh
 from .whisper import fiable, limpiar
 
-VERSION = "0.2.0"
+VERSION = "0.2.1"
 BASE = Path(__file__).resolve().parent
 PUERTO = int(os.environ.get("TOMO_PUERTO", "47870"))
 TASA = 16000
@@ -281,6 +281,7 @@ class Sesion:
                  "ideas": self.ideas, "minutos": int(seg // 60), "carpeta": str(self.carpeta),
                  "n_lineas": len(self.lineas), "nota": self.nota, "version": self.version,
                  "microfono": "mic" in self.colas, "fuente": self.fuente, "apps_oidas": self.apps_oidas,
+                 "modo_oido": getattr(self, "modo_oido", ""),
                  "lineas": self.lineas if completo else self.lineas[-80:],
                  "preguntas": list(reversed(self.preguntas)),
                  "pantalla": self.pantallas[-1] if self.pantallas else None,
@@ -390,6 +391,7 @@ class Sesion:
         while not self.parar.is_set():
             try:
                 self.apps_oidas = self.oido.enlazar()
+                self.modo_oido = self.oido.modo
             except Exception as e:
                 log("oído:", e)
             self.parar.wait(1)
@@ -750,6 +752,7 @@ class Oido:
                             "sink_properties=device.description=Tomo-oido node.virtual=true",
                             "channels=2", "rate=48000"], capture_output=True, text=True)
         self.modulo = r.stdout.strip()
+        self.modo = "nada"
 
     def enlazar(self):
         objs = json.loads(subprocess.run(["pw-dump"], capture_output=True, text=True, timeout=10).stdout or "[]")
@@ -758,9 +761,16 @@ class Oido:
                           and p.get("media.class") == "Audio/Sink"), None)
         if nodo_oido is None:
             return 0
-        apps = {i for i, p in props.items() if p.get("media.class") == "Stream/Output/Audio" and re.search(
-            leer_ajustes().get("apps") or "zoom", " ".join(str(p.get(k, "")) for k in ("application.name", "application.process.binary",
-                                                                  "node.name")), re.I)}
+        salidas = {i: p for i, p in props.items() if p.get("media.class") == "Stream/Output/Audio"}
+        nombre = lambda p: " ".join(str(p.get(k, "")) for k in ("application.name", "application.process.binary", "node.name"))
+        apps = {i for i, p in salidas.items() if re.search(leer_ajustes().get("apps") or "zoom", nombre(p), re.I)}
+        self.modo = "app"
+        if not apps:
+            # sin Zoom/Teams/Webex: la reunión está en el navegador (Meet, Teams web…) → oír todo lo que suena,
+            # menos sonidos del sistema y lo propio
+            apps = {i for i, p in salidas.items() if p.get("media.role") not in ("event", "Notification", "notification")
+                    and not re.search(r"tomo|speech-dispatcher|notify|canberra", nombre(p), re.I)}
+            self.modo = "todo" if apps else "nada"
         puertos = [(o["id"], props[o["id"]]) for o in objs if o.get("type") == "PipeWire:Interface:Port"]
         entrada = {p.get("audio.channel"): i for i, p in puertos
                    if int(p.get("node.id", -1)) == nodo_oido and p.get("port.direction") == "in"}

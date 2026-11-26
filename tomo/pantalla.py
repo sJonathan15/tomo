@@ -118,16 +118,43 @@ def monitores():
 
 
 # ------------------------------------------------------------------ captura
+PORTAL = Path(__file__).with_name("portal_captura.py")
+
+
+def hay_portal():
+    """Portal de capturas disponible: Python del sistema con gi + xdg-desktop-portal en la sesión."""
+    if not Path("/usr/bin/python3").exists():
+        return False
+    try:
+        r = subprocess.run(["/usr/bin/python3", "-c", "import gi; gi.require_version('Gio','2.0')"], capture_output=True, timeout=5)
+        if r.returncode:
+            return False
+        r = subprocess.run(["busctl", "--user", "status", "org.freedesktop.portal.Desktop"], capture_output=True, timeout=5, env=entorno())
+        return r.returncode == 0 or bool(shutil.which("gdbus"))
+    except Exception:
+        return False
+
+
 def herramientas():
-    """Qué herramientas de captura hay, en el orden que conviene a este escritorio."""
+    """Qué herramientas de captura hay, en el orden que conviene a este escritorio.
+    GNOME en Wayland no deja capturar a programas sueltos (gnome-screenshot sale negro): ahí va primero el portal."""
     esc = escritorio()
-    orden = {"kde": ["spectacle", "grim", "import"], "gnome": ["gnome-screenshot", "import"],
-             "hyprland": ["grim"], "sway": ["grim"], "niri": ["grim"], "wayland": ["grim", "spectacle", "gnome-screenshot"],
+    wayland = bool(entorno().get("WAYLAND_DISPLAY"))
+    orden = {"kde": ["spectacle", "grim", "portal", "import"],
+             "gnome": (["portal", "gnome-screenshot"] if wayland else ["gnome-screenshot", "maim", "import", "portal"]),
+             "hyprland": ["grim", "portal"], "sway": ["grim", "portal"], "niri": ["grim", "portal"],
+             "wayland": ["grim", "portal", "spectacle", "gnome-screenshot"],
              "x11": ["maim", "import", "scrot", "spectacle", "gnome-screenshot"]}[esc]
-    return [h for h in orden if shutil.which(h)]
+    return [h for h in orden if (hay_portal() if h == "portal" else shutil.which(h))]
 
 
 def _capturar(png: Path, herramienta, salida=""):
+    if herramienta == "portal":
+        r = subprocess.run(["/usr/bin/python3", str(PORTAL), str(png)], timeout=100, env=entorno(),
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if r.returncode or not png.exists():
+            raise RuntimeError("el portal no entregó la captura (¿se negó el permiso?)")
+        return _no_negra(png)
     cmd = {"spectacle": ["spectacle", "-b", "-n", "-f", "-o", str(png)],
            "grim": ["grim"] + (["-o", salida] if salida else []) + [str(png)],
            "gnome-screenshot": ["gnome-screenshot", "-f", str(png)],
@@ -137,6 +164,19 @@ def _capturar(png: Path, herramienta, salida=""):
     subprocess.run(cmd, timeout=15, check=True, env=entorno(), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     if not png.exists() or png.stat().st_size < 1000:
         raise RuntimeError(f"{herramienta} no dejó imagen")
+    _no_negra(png)
+
+
+def _no_negra(png: Path):
+    """En Wayland algunas herramientas «funcionan» pero entregan la pantalla en negro: eso cuenta como fallo."""
+    try:
+        cmd = (["magick"] if shutil.which("magick") else ["convert"]) + [str(png), "-resize", "64x", "-colorspace", "gray", "-format", "%[fx:mean]", "info:"]
+        media = float(subprocess.run(cmd, capture_output=True, text=True, timeout=10).stdout or 1)
+    except Exception:
+        return
+    if media < 0.004:
+        png.unlink(missing_ok=True)
+        raise RuntimeError("la captura salió negra")
 
 
 def _magick():

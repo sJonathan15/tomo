@@ -367,7 +367,11 @@ function refrescarVivo() {
   vivoCargando = true;
   const nueva = new Image();
   nueva.onload = () => { img.src = nueva.src; img.classList.add("lista"); $("#vivo-vacio").hidden = true; vivoCargando = false; };
-  nueva.onerror = () => { $("#vivo-vacio").textContent = "No pude capturar la pantalla."; vivoCargando = false; };
+  nueva.onerror = () => {
+    const gnome = (navigator.userAgent.includes("Linux"));
+    $("#vivo-vacio").innerHTML = "No pude capturar la pantalla." + (gnome ? "<br><small>En GNOME acepta el aviso «Permitir captura de pantalla» la primera vez. Si lo negaste, vuelve a intentarlo con «Mirar ahora».</small>" : "");
+    vivoCargando = false;
+  };
   nueva.src = `/api/vivo.jpg?t=${Date.now()}`;
   const mons = monitores?.monitores || [];
   const el = estado?.ajustes?.monitor;
@@ -387,7 +391,7 @@ function actualizarCabina(s, enVivo) {
   const f = $("#tr-fuente");
   if (f && enVivo && s.fuente) {
     f.hidden = false;
-    f.textContent = (s.fuente === "app directa" ? (s.apps_oidas ? "oyendo la reunión" : "esperando el audio de la app") : "oyendo la salida") + (s.microfono ? " + tu mic" : "");
+    f.textContent = (s.fuente === "app directa" ? ({ app: "oyendo la app de reunión", todo: "oyendo lo que suena (navegador)" }[s.modo_oido] || "esperando audio") : "oyendo la salida") + (s.microfono ? " + tu mic" : "");
   }
 }
 

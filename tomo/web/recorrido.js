@@ -79,7 +79,7 @@ function pintarPaso() {
       <p class="asis-desc">Esto es lo que encontré. Lo marcado en amarillo trae la solución al lado.</p>
       <div class="deps">
         ${filaDep(!!si.pipewire, "Audio (PipeWire)", si.pipewire ? "listo para oír la reunión" : "falta: instala <code>pipewire</code> y vuelve a correr el instalador")}
-        ${filaDep((si.capturas || []).length > 0, "Captura de pantalla", (si.capturas || []).length ? esc(si.capturas.join(", ")) : "falta: instala grim, spectacle, gnome-screenshot o maim")}
+        ${filaDep((si.capturas || []).length > 0, "Captura de pantalla", (si.capturas || []).length ? esc(si.capturas.join(", ")) + ((si.capturas || [])[0] === "portal" ? " · la primera vez tu escritorio te pedirá <b>Permitir</b>" : "") : "falta: instala python3-gi, grim, spectacle o maim")}
         ${filaDep(true, "Oído (Whisper)", si.cuda ? `tarjeta NVIDIA · usaré <b>${esc(si.whisper_sugerido)}</b>` : `sin tarjeta NVIDIA · usaré <b>${esc(si.whisper_sugerido || "small")}</b> en la CPU`)}
         ${filaDep(!!si.audio?.["notify-send"], "Avisos en el escritorio", si.audio?.["notify-send"] ? "listos" : "opcional: instala libnotify")}
         ${filaDep(!!ol.corriendo, "Modelos locales (Ollama)", ol.corriendo ? `${(ol.modelos || []).filter((x) => x.vision).length} con visión instalados` : (ol.instalado ? "instalado pero apagado" : "opcional: <a class='enlace' href='https://ollama.com/download' target='_blank' rel='noopener'>ollama.com</a>"))}

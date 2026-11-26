@@ -1,5 +1,27 @@
 [
   {
+    "version": "0.2.1",
+    "fecha": "2026-11-26",
+    "titulo": "Ahora sí veo y oigo en Ubuntu",
+    "mejoras": [
+      {
+        "icono": "🖥️",
+        "titulo": "Capturas en GNOME (Ubuntu)",
+        "texto": "Uso el portal de capturas del escritorio: la primera vez tu sistema te pide «Permitir» y después funciona solo."
+      },
+      {
+        "icono": "⬛",
+        "titulo": "Adiós a las capturas negras",
+        "texto": "Si una herramienta entrega la pantalla en negro, pruebo la siguiente automáticamente."
+      },
+      {
+        "icono": "🌐",
+        "titulo": "Reuniones en el navegador",
+        "texto": "Si no encuentro Zoom, Teams o Webex instalados, oigo lo que suena: Meet o Teams web funcionan sin tocar nada."
+      }
+    ]
+  },
+  {
     "version": "0.2.0",
     "fecha": "2026-11-26",
     "titulo": "Tomo te recibe mejor",

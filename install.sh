@@ -39,27 +39,27 @@ escritorio="$(echo "${XDG_CURRENT_DESKTOP:-}" | tr '[:upper:]' '[:lower:]')"
 captura=""
 case "$escritorio" in
   *kde*|*plasma*) command -v spectacle >/dev/null || captura="spectacle" ;;
-  *gnome*|*unity*|*cinnamon*|*budgie*) captura="gnome-screenshot" ;;
+  *gnome*|*unity*|*cinnamon*|*budgie*) captura="" ;;   # GNOME Wayland: portal (python3-gi)
   *hyprland*|*sway*|*niri*|*wlroots*|*river*) captura="grim" ;;
   *) [[ -n "${WAYLAND_DISPLAY:-}" ]] && captura="grim" || captura="maim" ;;
 esac
 
 if command -v apt-get >/dev/null; then
-  paquetes=(git python3 python3-venv python3-pip pipewire-bin pulseaudio-utils imagemagick libnotify-bin x11-xserver-utils xdg-user-dirs curl)
+  paquetes=(git python3 python3-venv python3-pip pipewire-bin pulseaudio-utils imagemagick libnotify-bin x11-xserver-utils xdg-user-dirs curl python3-gi xdg-desktop-portal)
   [[ -n "$captura" ]] && paquetes+=("$captura")
   faltan=(); for p in "${paquetes[@]}"; do dpkg -s "$p" >/dev/null 2>&1 || faltan+=("$p"); done
   if ((${#faltan[@]})); then gris "sudo apt-get install ${faltan[*]}"; sudo apt-get update -qq && sudo apt-get install -y "${faltan[@]}"; fi
 elif command -v dnf >/dev/null; then
-  paquetes=(git python3 python3-pip pipewire-utils pulseaudio-utils ImageMagick libnotify xrandr xdg-user-dirs curl)
+  paquetes=(git python3 python3-pip pipewire-utils pulseaudio-utils ImageMagick libnotify xrandr xdg-user-dirs curl python3-gobject xdg-desktop-portal)
   [[ -n "$captura" ]] && paquetes+=("$captura")
   gris "sudo dnf install ${paquetes[*]}"; sudo dnf install -y "${paquetes[@]}"
 elif command -v pacman >/dev/null; then
-  paquetes=(git python python-pip pipewire pipewire-pulse libpulse imagemagick libnotify xorg-xrandr xdg-user-dirs curl)
+  paquetes=(git python python-pip pipewire pipewire-pulse libpulse imagemagick libnotify xorg-xrandr xdg-user-dirs curl python-gobject xdg-desktop-portal)
   [[ -n "$captura" ]] && paquetes+=("$captura")
   faltan=(); for p in "${paquetes[@]}"; do pacman -Qi "$p" >/dev/null 2>&1 || faltan+=("$p"); done
   if ((${#faltan[@]})); then gris "sudo pacman -S ${faltan[*]}"; sudo pacman -S --needed --noconfirm "${faltan[@]}"; fi
 elif command -v zypper >/dev/null; then
-  paquetes=(git python3 python3-pip pipewire-tools pulseaudio-utils ImageMagick libnotify-tools xrandr xdg-user-dirs curl)
+  paquetes=(git python3 python3-pip pipewire-tools pulseaudio-utils ImageMagick libnotify-tools xrandr xdg-user-dirs curl python3-gobject xdg-desktop-portal)
   [[ -n "$captura" ]] && paquetes+=("$captura")
   gris "sudo zypper install ${paquetes[*]}"; sudo zypper install -y "${paquetes[@]}"
 else
