@@ -14,6 +14,7 @@ import gc
 import json
 import os
 import re
+import shutil
 import subprocess
 import threading
 import time
@@ -24,6 +25,7 @@ import urllib.parse
 import urllib.request
 from collections import deque
 from datetime import datetime
+from types import SimpleNamespace
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -34,7 +36,7 @@ from . import modelos, pantalla
 from . import whisper as wh
 from .whisper import fiable, limpiar
 
-VERSION = "0.2.3"
+VERSION = "0.3.0"
 BASE = Path(__file__).resolve().parent
 PUERTO = int(os.environ.get("TOMO_PUERTO", "47870"))
 TASA = 16000
@@ -132,8 +134,8 @@ def json_de(texto):
 
 def avisar(titulo, texto, urgente=False, reemplaza=None):
     """Globito del escritorio. Devuelve su id para reemplazarlo luego (borrador → respuesta final)."""
-    if not leer_ajustes().get("globitos", True):
-        return None
+    if not leer_ajustes().get("globitos", True) or not shutil.which("notify-send"):
+        return None       # sin libnotify la app usa las notificaciones del navegador
     cmd = ["notify-send", "-p", "-a", "Tomo", "-i", "audio-headset", "-u", "critical" if urgente else "normal",
            "-t", "90000" if urgente else "12000"]
     if reemplaza:
@@ -229,6 +231,7 @@ class Sesion:
         self.ajustes = ajustes
         self.estado = "cargando"      # cargando · escuchando · pausado · resumiendo · listo · error
         self.error = ""
+        self.detalle = ""             # qué está haciendo mientras carga (p. ej. descargando el modelo de voz)
         self.lineas = []              # {t, quien, texto}
         self.preguntas = []           # {id, t, cual, pantalla, respuesta, estado, variantes}
         self.pantallas = []           # {t, titulo, resumen, herramientas, imagen}
@@ -274,7 +277,7 @@ class Sesion:
             for l in self.lineas:
                 ritmo[min(len(ritmo) - 1, int(l["s"] // paso))] += len(l["texto"].split())
             herramientas = list(dict.fromkeys(h.strip() for p in self.pantallas for h in p["herramientas"] if h.strip()))
-            d = {"id": self.id, "tema": self.tema, "estado": self.estado, "error": self.error,
+            d = {"id": self.id, "tema": self.tema, "estado": self.estado, "error": self.error, "detalle": self.detalle,
                  "inicio": datetime.fromtimestamp(self.inicio).isoformat(timespec="seconds"),
                  "fin": datetime.fromtimestamp(self.fin).isoformat(timespec="seconds") if self.fin else "",
                  "seg": int(seg), "ritmo": ritmo, "ritmo_paso": paso, "herramientas": herramientas[:40],
@@ -307,7 +310,13 @@ class Sesion:
 
     def _correr(self):
         try:
-            cargar_whisper(self.ajustes.get("modelo", "auto"))
+            self.detalle = ("Cargando el modelo de voz. La primera vez se descarga (entre 0,5 y 1,6 GB) "
+                            "y puede tardar unos minutos.")
+            try:
+                cargar_whisper(self.ajustes.get("modelo", "auto"))
+            except Exception as e:
+                raise RuntimeError(f"no pude cargar el modelo de voz (¿sin internet la primera vez?): {e}") from e
+            self.detalle = ""
             self._abrir_audio()
             with self.lock:
                 self.estado = "escuchando"
@@ -350,17 +359,34 @@ class Sesion:
         # «oído» propio: un sink virtual al que se enlazan los streams de la app de reunión (Zoom, Teams…).
         # Así se graba el audio antes del volumen (funciona con audífonos y el volumen bajo).
         # Ajuste «salida» (Meet/Teams en el navegador…) → lo que suena por la salida por defecto.
-        if self.ajustes.get("fuente", "app") in ("app", "zoom"):
-            self.oido = Oido()
-            self.fuente = "app directa"
-            # ojo: «<sink>.monitor» no existe como nodo y pw-record caería al micrófono
-            fuentes = {"sistema": ["--target", Oido.NOMBRE, "-P", "{ stream.capture.sink=true }"]}
-            threading.Thread(target=self._vigilar_oido, daemon=True).start()
-        else:
+        # Sin PipeWire (p. ej. Ubuntu 22.04 con PulseAudio) se graba la salida con parec.
+        motor = motor_audio()
+        if motor == "nada":
+            raise RuntimeError("no encuentro el audio del sistema: Tomo necesita PipeWire (pw-record) o PulseAudio (parec)")
+        pw = ["pw-record"]
+        fmt = ["--raw", "--rate", str(TASA), "--channels", "1", "--format", "s16", "-"]
+        fuentes = {}
+        if motor == "pipewire" and self.ajustes.get("fuente", "app") in ("app", "zoom"):
+            try:
+                self.oido = Oido()
+                self.fuente = "app directa"
+                # ojo: «<sink>.monitor» no existe como nodo y pw-record caería al micrófono
+                fuentes["sistema"] = pw + ["--target", Oido.NOMBRE, "-P", "{ stream.capture.sink=true }"] + fmt
+                threading.Thread(target=self._vigilar_oido, daemon=True).start()
+            except Exception as e:
+                log("no pude crear el oído propio; escucho la salida de audio:", e)
+                self.oido = None
+        if "sistema" not in fuentes:
             self.fuente = "salida de audio"
-            fuentes = {"sistema": ["-P", "{ stream.capture.sink=true }"]}
-        if "mic" in self.colas:
-            fuentes["mic"] = []          # micrófono por defecto (easyeffects con RNNoise si está)
+            if motor == "pipewire":
+                fuentes["sistema"] = pw + ["-P", "{ stream.capture.sink=true }"] + fmt
+            else:
+                fuentes["sistema"] = ["parec", f"--device={monitor_pulse()}", "--rate", str(TASA), "--channels", "1",
+                                      "--format", "s16le", "--raw"]
+        if "mic" in self.colas:          # micrófono por defecto (easyeffects con RNNoise si está)
+            fuentes["mic"] = pw + fmt if motor == "pipewire" else ["parec", "--rate", str(TASA), "--channels", "1",
+                                                                  "--format", "s16le", "--raw"]
+        self.motor_audio = motor
         self.fuentes = fuentes
         self.grabadores = {}
         for pista in fuentes:
@@ -368,8 +394,7 @@ class Sesion:
         threading.Thread(target=self._vigilar_audio, daemon=True).start()
 
     def _grabar(self, pista):
-        p = subprocess.Popen(["pw-record", *self.fuentes[pista], "--raw", "--rate", str(TASA), "--channels", "1",
-                              "--format", "s16", "-"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        p = subprocess.Popen(self.fuentes[pista], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
         self.procesos.append(p)
         self.grabadores[pista] = p
         threading.Thread(target=self._leer, args=(pista, p), daemon=True).start()
@@ -465,8 +490,10 @@ class Sesion:
                     from faster_whisper import WhisperModel
                     WHISPER["modelo"] = None
                     gc.collect()
-                    WHISPER["modelo"] = WhisperModel("medium", device="cpu", compute_type="int8", cpu_threads=6)
-                    WHISPER["nombre"] = "medium-cpu"
+                    cpu = wh.modelo_cpu()
+                    WHISPER["modelo"] = WhisperModel(cpu, device="cpu", compute_type="int8",
+                                                     cpu_threads=max(2, (os.cpu_count() or 4) - 2))
+                    WHISPER["nombre"], WHISPER["donde"] = f"{cpu}-cpu", "cpu"
                 self.fallos_whisper = 0
             return
         if not texto:
@@ -530,6 +557,19 @@ class Sesion:
 
     def ayudar(self, forzado=False):
         """Auto (oyó algo con forma de pregunta) o forzado («Ayúdame ahora»)."""
+        try:
+            self._ayudar(forzado)
+        except Exception as e:
+            log("no pude analizar la pregunta:", e)
+            if forzado:
+                with self.lock:
+                    self.preguntas.append({"id": f"q{int(time.time() * 1000)}", "t": datetime.now().strftime("%H:%M:%S"),
+                                           "s": round(time.time() - self.inicio, 1), "cual": "No pude pensar una respuesta",
+                                           "pantalla": "", "respuesta": f"Ningún modelo de IA respondió ({e}). Revisa Ajustes › Modelos de IA.",
+                                           "estado": "error", "pedida": True, "imagen": "", "contexto": ""})
+                self.guardar()
+
+    def _ayudar(self, forzado=False):
         t0 = time.time()
         ultimo = self.contexto(3 if not forzado else 6)
         texto = (f"{perfil()}\nTema de la reunión: {self.tema or 'no indicado'}\n\nContexto reciente:\n{self.contexto(25)}"
@@ -630,7 +670,7 @@ class Sesion:
         self.hilo.join(timeout=60)      # que el transcriptor pase lo último
         soltar_whisper()
         try:
-            self.nota = escribir_nota(self) if self.lineas else ""
+            self.nota = escribir_nota(self) if self.lineas else ""      # sin IA también queda una nota
             if self.nota:
                 m = re.search(r"## Ideas para mis proyectos\s*\n(.*?)(\n## |\Z)", Path(self.nota).read_text(encoding="utf-8"), re.S)
                 self.ideas = [re.sub(r"^[-*]\s*|\*\*", "", x).strip() for x in (m.group(1) if m else "").splitlines()
@@ -714,12 +754,12 @@ def _resolver(s, e, lock):
         mensajes.append({"role": "user", "content": partes if len(partes) > 1 else txt})
     try:
         try:
-            r = llamar("texto", mensajes, max_tokens=4000, timeout=120)
+            r = llamar("vision" if hay_img else "texto", mensajes, max_tokens=4000, timeout=120)
         except Exception as ex:
             if hay_img:
                 raise
-            log("gemini falló en ejercicio, uso codigo:", ex)
-            r = llamar("texto", mensajes, max_tokens=4000, timeout=120)
+            log("el modelo de texto falló en el ejercicio, pruebo el de visión:", ex)
+            r = llamar("vision", mensajes, max_tokens=4000, timeout=120)
         with lock:
             e["mensajes"].append({"rol": "copiloto", "texto": r, "t": datetime.now().strftime("%H:%M:%S")})
             e["estado"] = "lista"
@@ -749,11 +789,27 @@ class Oido:
     NOMBRE = "tomo_oido"
 
     def __init__(self):
+        if not shutil.which("pactl"):
+            raise RuntimeError("falta pactl (pulseaudio-utils)")
+        Oido.limpiar()
         r = subprocess.run(["pactl", "load-module", "module-null-sink", f"sink_name={self.NOMBRE}",
                             "sink_properties=device.description=Tomo-oido node.virtual=true",
-                            "channels=2", "rate=48000"], capture_output=True, text=True)
+                            "channels=2", "rate=48000"], capture_output=True, text=True, timeout=10)
         self.modulo = r.stdout.strip()
+        if r.returncode or not self.modulo.isdigit():
+            raise RuntimeError(f"pactl no creó el oído: {(r.stderr or r.stdout).strip()}")
         self.modo = "nada"
+
+    @classmethod
+    def limpiar(cls):
+        """Quita oídos que quedaron de una vez que Tomo se cerró de golpe (si no, se apilan «tomo_oido» repetidos)."""
+        try:
+            out = subprocess.run(["pactl", "list", "short", "modules"], capture_output=True, text=True, timeout=10).stdout
+            for l in out.splitlines():
+                if f"sink_name={cls.NOMBRE}" in l:
+                    subprocess.run(["pactl", "unload-module", l.split()[0]], capture_output=True, timeout=10)
+        except Exception:
+            pass
 
     def enlazar(self):
         objs = json.loads(subprocess.run(["pw-dump"], capture_output=True, text=True, timeout=10).stdout or "[]")
@@ -793,6 +849,31 @@ class Oido:
             self.modulo = ""
 
 
+def motor_audio():
+    """pipewire · pulse (PulseAudio sin PipeWire, p. ej. Ubuntu 22.04) · nada."""
+    try:
+        if shutil.which("pw-record") and subprocess.run(["pw-cli", "info", "0"], capture_output=True, timeout=4).returncode == 0:
+            return "pipewire"
+    except Exception:
+        pass
+    try:
+        if shutil.which("parec") and subprocess.run(["pactl", "info"], capture_output=True, timeout=4).returncode == 0:
+            return "pulse"
+    except Exception:
+        pass
+    return "nada"
+
+
+def monitor_pulse():
+    try:
+        sink = subprocess.run(["pactl", "get-default-sink"], capture_output=True, text=True, timeout=4).stdout.strip()
+        if sink:
+            return f"{sink}.monitor"
+    except Exception:
+        pass
+    return "@DEFAULT_MONITOR@"
+
+
 # ------------------------------------------------------------------ Whisper (uno solo, se suelta al terminar)
 WHISPER = {"modelo": None, "nombre": "", "donde": ""}
 _whisper_lock = threading.Lock()
@@ -823,51 +904,209 @@ def boveda_obsidian(f: Path):
     return next((d for d in [f, *f.parents] if (d / ".obsidian").is_dir()), None)
 
 
-def escribir_nota(s: Sesion):
+def nota_basica(s):
+    """Nota armada sin IA (ningún modelo respondió): lo vivido, ordenado. Se puede rehacer con IA desde Notas."""
+    pant = "\n".join(f"- **{p['t'][:5]}** · {p['titulo']}: {p['resumen']}" for p in s.pantallas if not p.get("sin_leer"))
+    herr = list(dict.fromkeys(h.strip() for p in s.pantallas for h in p.get("herramientas") or [] if h.strip()))
+    preg = "\n".join(f"- **{q['cual']}** — {q.get('respuesta') or ''}".rstrip(" —") for q in s.preguntas)
+    trans = "\n".join(f"- {l['t'][:5]} · {l['quien']}: {l['texto']}" for l in s.lineas)
+    return ("## Resumen\nEsta nota se armó **sin IA**: al terminar ningún modelo respondió. Tiene todo lo que se dijo y se vio; "
+            "en Tomo › Notas puedes pulsar «Rehacer con IA» cuando tengas un modelo listo.\n\n"
+            f"## Diapositivas vistas\n{pant or 'Ninguna.'}\n\n"
+            f"## Herramientas, sitios y repos mencionados\n{chr(10).join('- ' + h for h in herr) or 'Ninguno.'}\n\n"
+            f"## Preguntas y respuestas\n{preg or 'Ninguna.'}\n\n## Transcripción\n{trans or '(vacía)'}")
+
+
+def escribir_nota(s, ruta=None):
+    """Escribe la nota final (con IA; si ningún modelo responde, una básica). `ruta` = reescribir esa nota."""
     trans = "\n".join(f"[{l['t']}] {l['quien']}: {l['texto']}" for l in s.lineas)[-60000:]
     pant = "\n".join(f"- [{p['t']}] {p['titulo']}: {p['resumen']} ({', '.join(p['herramientas'])})" for p in s.pantallas)
     preg = "\n".join(f"- [{q['t']}] {q['cual']} → {q['respuesta']}" for q in s.preguntas)
     pedido = (f"Tema: {s.tema or 'no indicado'}\nFecha: {datetime.fromtimestamp(s.inicio):%Y-%m-%d %H:%M}\n\n"
               f"{perfil()}\nPROYECTOS DEL USUARIO:\n{leer_ajustes().get('proyectos') or '(no indicó)'}\n\nDIAPOSITIVAS VISTAS:\n{pant or '(ninguna)'}\n\n"
               f"PREGUNTAS QUE SURGIERON:\n{preg or '(ninguna)'}\n\nTRANSCRIPCIÓN:\n{trans}")
+    mensajes = [{"role": "system", "content": NOTAS}, {"role": "user", "content": pedido}]
+    con_ia = True
     try:
-        cuerpo = llamar("texto", [{"role": "system", "content": NOTAS}, {"role": "user", "content": pedido}],
-                        max_tokens=6000, timeout=240)
+        try:
+            cuerpo = llamar("texto", mensajes, max_tokens=6000, timeout=240)
+        except Exception as e:
+            log("el modelo de texto falló para la nota, pruebo el de visión:", e)
+            cuerpo = llamar("vision", mensajes, max_tokens=6000, timeout=240)
+        cuerpo = re.sub(r"^```(?:markdown)?\s*|\s*```$", "", cuerpo.strip())
+        cuerpo = re.sub(r"^(##[^(\n]+?)\s*\([^\n]*\)\s*$", r"\1", cuerpo, flags=re.M)   # modelos chicos copian «(3-6 líneas)»
+        if not cuerpo:
+            raise RuntimeError("respuesta vacía")
     except Exception as e:
-        log("codigo falló para la nota, uso gemini:", e)
-        cuerpo = llamar("vision", [{"role": "system", "content": NOTAS}, {"role": "user", "content": pedido}],
-                        max_tokens=6000, timeout=240)
-    cuerpo = re.sub(r"^```(?:markdown)?\s*|\s*```$", "", cuerpo.strip())
+        log("ningún modelo escribió la nota; la armo sin IA:", e)
+        cuerpo, con_ia = nota_basica(s), False
     CURSOS = carpeta_notas()
     CURSOS.mkdir(parents=True, exist_ok=True)
     fecha = datetime.fromtimestamp(s.inicio)
-    nombre = f"{fecha:%Y-%m-%d}-{slug(s.tema or 'reunion')}"
-    ruta = CURSOS / f"{nombre}.md"
-    n = 2
-    while ruta.exists():
-        ruta = CURSOS / f"{nombre}-{n}.md"
-        n += 1
+    nueva = ruta is None
+    if nueva:
+        nombre = f"{fecha:%Y-%m-%d}-{slug(s.tema or 'reunion')}"
+        ruta = CURSOS / f"{nombre}.md"
+        n = 2
+        while ruta.exists():
+            ruta = CURSOS / f"{nombre}-{n}.md"
+            n += 1
+    ruta = Path(ruta)
     titulo = s.tema or "Reunión"
     minutos = int(((s.fin or time.time()) - s.inicio) // 60)
     ruta.write_text(
-        f"---\ntags: [curso, reunion]\nfecha: {fecha:%Y-%m-%d}\n---\n# {titulo} — {fecha:%Y-%m-%d}\n\n"
+        f"---\ntags: [curso, reunion]\nfecha: {fecha:%Y-%m-%d}\ntomo_reunion: {s.id}\ntomo_ia: {'si' if con_ia else 'no'}\n---\n"
+        f"# {titulo} — {fecha:%Y-%m-%d}\n\n"
         f"Notas de Tomo · {minutos} min · {len(s.lineas)} frases · {len(s.preguntas)} preguntas. "
         f"Índice: [[Indice|Reuniones]].\n\n{cuerpo}\n\n"
         f"## Archivos\n- Transcripción: `{s.carpeta}/transcripcion.md`\n"
         f"- Sugerencias: `{s.carpeta}/sugerencias.md`\n- Capturas: `{s.carpeta}/pantallas/`\n",
         encoding="utf-8")
-    m = re.search(r"## Resumen\s*\n+(.+)", cuerpo)
-    de_que = re.sub(r"^[-*\s]+|\*\*", "", m.group(1).strip() if m else titulo).replace("|", "/")[:110]
-    indice = CURSOS / "Indice.md"
-    if not indice.exists():
-        indice.write_text("---\ntags: [indice]\n---\n# Cursos y reuniones\n\n"
-                          "Notas que deja Tomo al terminar cada "
-                          "curso o reunión: resumen, herramientas mencionadas, ideas para mis proyectos y preguntas.\n\n"
-                          "| Nota | De qué trató | Fecha |\n|---|---|---|\n", encoding="utf-8")
-    with indice.open("a", encoding="utf-8") as f:
-        f.write(f"| [[{ruta.stem}]] | {de_que} | {fecha:%Y-%m-%d} |\n")
-    log("nota:", ruta)
+    if nueva:
+        m = re.search(r"## Resumen\s*\n+(.+)", cuerpo)
+        de_que = re.sub(r"^[-*\s]+|\*\*", "", m.group(1).strip() if m else titulo).replace("|", "/")[:110]
+        indice = CURSOS / "Indice.md"
+        if not indice.exists():
+            indice.write_text("---\ntags: [indice]\n---\n# Cursos y reuniones\n\n"
+                              "Notas que deja Tomo al terminar cada "
+                              "curso o reunión: resumen, herramientas mencionadas, ideas para mis proyectos y preguntas.\n\n"
+                              "| Nota | De qué trató | Fecha |\n|---|---|---|\n", encoding="utf-8")
+        with indice.open("a", encoding="utf-8") as f:
+            f.write(f"| [[{ruta.stem}]] | {de_que} | {fecha:%Y-%m-%d} |\n")
+    log("nota:", ruta, "" if con_ia else "(sin IA)")
     return str(ruta)
+
+
+def rehacer_nota(ruta: Path):
+    """Vuelve a escribir con IA la nota de una reunión (p. ej. una que salió «sin IA»)."""
+    m = re.search(r"^tomo_reunion:\s*(\S+)", ruta.read_text(encoding="utf-8"), re.M)
+    if not m:
+        raise RuntimeError("esta nota no la escribió Tomo para una reunión")
+    f = RAIZ / f"reunion-{m.group(1)}" / "sesion.json"
+    if not f.exists():
+        raise RuntimeError("ya no está la carpeta de esa reunión")
+    d = json.loads(f.read_text(encoding="utf-8"))
+    ini = datetime.fromisoformat(d["inicio"]).timestamp()
+    fin = datetime.fromisoformat(d["fin"]).timestamp() if d.get("fin") else ini + 60 * (d.get("minutos") or 0)
+    s = SimpleNamespace(id=d["id"], tema=d.get("tema", ""), inicio=ini, fin=fin, lineas=d.get("lineas") or [],
+                        pantallas=d.get("pantallas") or [], preguntas=list(reversed(d.get("preguntas") or [])), carpeta=f.parent)
+    escribir_nota(s, ruta)
+    if "tomo_ia: no" in ruta.read_text(encoding="utf-8"):
+        raise RuntimeError("ningún modelo de IA respondió; la nota sigue igual")
+
+
+# ------------------------------------------------------------------ notas dentro de Tomo (sin depender de Obsidian)
+def plano(t):
+    t = unicodedata.normalize("NFD", (t or "").lower())
+    return "".join(c for c in t if unicodedata.category(c) != "Mn")
+
+
+def raices_notas():
+    return [r.resolve() for r in (carpeta_notas(), RAIZ)]
+
+
+def nota_permitida(f: Path):
+    return f.suffix.lower() == ".md" and any(r == f.parent or r in f.parents for r in raices_notas())
+
+
+def _frente(texto):
+    m = re.match(r"---\n(.*?)\n---\n", texto, re.S)
+    return dict(re.findall(r"^(\w+):\s*(.*)$", m.group(1), re.M)) if m else {}
+
+
+def archivos_notas(limite=400):
+    raiz = carpeta_notas()
+    if not raiz.is_dir():
+        return []
+    fs = [f for f in raiz.rglob("*.md") if not any(x.startswith(".") for x in f.relative_to(raiz).parts)]
+    return sorted(fs, key=lambda f: f.stat().st_mtime, reverse=True)[:limite]
+
+
+def resumen_corto(cuerpo):
+    """Lo primero que vale la pena leer: el «Resumen» de las notas de Tomo o el primer párrafo."""
+    m = re.search(r"^## Resumen[^\n]*\n+(.+?)(?=\n## |\Z)", cuerpo, re.S | re.M)
+    base = m.group(1) if m else "\n".join(l for l in cuerpo.splitlines()
+                                          if l.strip() and not l.startswith(("#", "Notas de Tomo", "---")))
+    base = re.sub(r"\[\[([^\]|]+)\|([^\]]+)\]\]", r"\2", base)
+    base = re.sub(r"\[\[([^\]]+)\]\]|\[([^\]]+)\]\([^)]*\)", lambda x: x.group(1) or x.group(2), base)
+    base = re.sub(r"^\s*([-+*]|\d+[.)])\s+(\[.\]\s*)?", "", base, flags=re.M)
+    return re.sub(r"\s+", " ", re.sub(r"[*`>#|_]+", " ", base)).strip()[:170]
+
+
+def listar_notas(q=""):
+    terminos = plano(q).split()
+    out = []
+    for f in archivos_notas():
+        try:
+            texto = f.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        cuerpo = re.sub(r"^---\n.*?\n---\n", "", texto, flags=re.S)
+        extracto = ""
+        if terminos:
+            p = plano(f.stem + "\n" + texto)
+            if not all(t in p for t in terminos):
+                continue
+            i = plano(cuerpo).find(terminos[0])
+            if i >= 0:
+                extracto = ("…" if i > 60 else "") + cuerpo[max(0, i - 60):i + 120].replace("\n", " ").strip() + "…"
+        if not extracto:
+            extracto = resumen_corto(cuerpo)
+        fr = _frente(texto)
+        tit = re.search(r"^# (.+)$", cuerpo, re.M)
+        out.append({"ruta": str(f), "nombre": f.stem, "titulo": tit.group(1).strip() if tit else f.stem,
+                    "fecha": fr.get("fecha") or datetime.fromtimestamp(f.stat().st_mtime).strftime("%Y-%m-%d"),
+                    "mtime": f.stat().st_mtime, "extracto": extracto, "tomo": bool(fr.get("tomo_reunion")),
+                    "sin_ia": fr.get("tomo_ia") == "no", "carpeta": str(f.parent.relative_to(carpeta_notas())) if f.parent != carpeta_notas() else ""})
+    return out
+
+
+def buscar_nota(nombre):
+    """[[Wikilink]] → archivo (como Obsidian: por nombre, sin importar la carpeta ni mayúsculas)."""
+    n = plano(nombre.split("|")[0].split("#")[0].strip())
+    return next((f for f in archivos_notas(5000) if plano(f.stem) == n), None)
+
+
+_apps = {}
+
+
+def app_para(tipo):
+    """Nombre de la app que abre ese tipo (text/markdown, inode/directory, x-scheme-handler/obsidian) o ""."""
+    if tipo in _apps and time.time() - _apps[tipo][0] < 60:
+        return _apps[tipo][1]
+    nombre = ""
+    try:
+        d = subprocess.run(["xdg-mime", "query", "default", tipo], capture_output=True, text=True, timeout=5,
+                           env=pantalla.entorno()).stdout.strip()
+        if d:
+            bases = [Path.home() / ".local/share", Path.home() / ".local/share/flatpak/exports/share",
+                     Path("/var/lib/flatpak/exports/share"),
+                     *map(Path, (os.environ.get("XDG_DATA_DIRS") or "/usr/local/share:/usr/share").split(":"))]
+            for b in bases:
+                f = b / "applications" / d
+                if f.is_file():
+                    m = re.search(r"^Name=(.+)$", f.read_text(errors="replace"), re.M)
+                    nombre = m.group(1).strip() if m else d.removesuffix(".desktop")
+                    break
+    except Exception:
+        nombre = ""
+    _apps[tipo] = (time.time(), nombre)
+    return nombre
+
+
+def como_abrir(f: Path):
+    """Con qué se puede abrir la nota fuera de Tomo (solo lo que de verdad está instalado)."""
+    return {"obsidian": bool(boveda_obsidian(f) and app_para("x-scheme-handler/obsidian")),
+            "app": app_para("text/markdown") or app_para("text/plain"),
+            "carpeta": app_para("inode/directory")}
+
+
+def datos_nota(f: Path):
+    texto = f.read_text(encoding="utf-8", errors="replace")
+    fr = _frente(texto)
+    return {"ruta": str(f), "nombre": f.stem, "texto": texto, "mtime": f.stat().st_mtime, "abrir": como_abrir(f),
+            "obsidian": como_abrir(f)["obsidian"], "reunion": fr.get("tomo_reunion", ""), "sin_ia": fr.get("tomo_ia") == "no",
+            "carpeta_notas": str(carpeta_notas())}
 
 
 # ------------------------------------------------------------------ historial
@@ -895,6 +1134,7 @@ def estado():
     comp = pantalla.estado_compartir() if pantalla.usar_compartir() else None
     web = max((f.stat().st_mtime for f in WEB.glob("*") if f.is_file()), default=0)   # la app se recarga sola si cambia
     return {"en_linea": True, "version": VERSION, "web": int(web), "ajustes": leer_ajustes(), "modelos_listos": modelos.hay_algo(), "compartir": comp,
+            "avisos_sistema": bool(leer_ajustes().get("globitos", True) and shutil.which("notify-send")),
             "actualizacion": (ACTUALIZACION["disponible"] or {}).get("version", ""), "act_estado": ACTUALIZACION["estado"], "sesion": s.resumen() if s else None, "ejercicios_libres": libres}
 
 
@@ -969,13 +1209,59 @@ def github():
     return _github["datos"]
 
 
+# paquete que trae cada cosa, por gestor: apt · dnf · pacman · zypper
+PAQUETES = {
+    "pipewire": ("pipewire-bin", "pipewire-utils", "pipewire", "pipewire-tools"),
+    "pactl": ("pulseaudio-utils", "pulseaudio-utils", "libpulse", "pulseaudio-utils"),
+    "notify-send": ("libnotify-bin", "libnotify", "libnotify", "libnotify-tools"),
+    "xdg-open": ("xdg-utils", "xdg-utils", "xdg-utils", "xdg-utils"),
+    "gi": ("python3-gi", "python3-gobject", "python-gobject", "python3-gobject"),
+    "gstreamer": ("gstreamer1.0-pipewire gstreamer1.0-plugins-good gir1.2-gstreamer-1.0 gir1.2-gst-plugins-base-1.0",
+                  "pipewire-gstreamer gstreamer1-plugins-good", "gst-plugin-pipewire gst-plugins-good",
+                  "gstreamer-plugin-pipewire gstreamer-plugins-good typelib-1_0-Gst-1_0"),
+    "grim": ("grim",) * 4, "spectacle": ("kde-spectacle", "spectacle", "spectacle", "spectacle"), "maim": ("maim",) * 4,
+}
+
+
+def faltantes():
+    """Lo que falta en el equipo, para qué sirve y el comando exacto de su distro."""
+    gestor = next((i for i, g in enumerate(("apt-get", "dnf", "pacman", "zypper")) if shutil.which(g)), None)
+    falta = []
+
+    def f(clave, que, para, obligatorio=False):
+        paq = PAQUETES[clave][gestor] if gestor is not None else clave
+        falta.append({"que": que, "para": para, "paquete": paq, "obligatorio": obligatorio})
+    motor = motor_audio()
+    if motor == "nada":
+        f("pipewire", "Audio del sistema (PipeWire)", "oír la reunión", True)
+    elif motor == "pipewire" and not shutil.which("pactl"):
+        f("pactl", "pactl", "oír solo la app de reunión (sin él, Tomo oye todo lo que suena)")
+    if not shutil.which("xdg-open"):
+        f("xdg-open", "xdg-open", "abrir enlaces y carpetas desde Tomo")
+    if leer_ajustes().get("globitos", True) and not shutil.which("notify-send"):
+        f("notify-send", "Avisos del escritorio", "avisarte de las preguntas (sin esto, Tomo usa los avisos del navegador)")
+    esc = pantalla.escritorio()
+    if pantalla.usar_compartir():
+        if not pantalla.hay_portal():
+            f("gi", "Portal del escritorio (python3-gi)", "mirar la pantalla en GNOME", True)
+        elif not pantalla.gstreamer_listo():
+            f("gstreamer", "GStreamer con PipeWire", "compartir la pantalla de la reunión sin destellos", True)
+    elif not pantalla.herramientas():
+        clave = {"kde": "spectacle", "hyprland": "grim", "sway": "grim", "niri": "grim", "wayland": "grim"}.get(esc, "maim")
+        f(clave, f"Captura de pantalla ({clave})", "mirar la pantalla de la reunión", True)
+    cmd = ""
+    paqs = " ".join(x["paquete"] for x in falta)
+    if paqs and gestor is not None:
+        cmd = ("sudo apt install ", "sudo dnf install ", "sudo pacman -S --needed ", "sudo zypper install ")[gestor] + paqs
+    return {"faltan": falta, "comando": cmd}
+
+
 def sistema():
     """Lo que Tomo encontró en este equipo (para la pantalla de configuración)."""
-    import shutil
-    herramientas = {h: bool(shutil.which(h)) for h in ("pw-record", "pw-link", "pw-dump", "pactl", "notify-send")}
+    herramientas = {h: bool(shutil.which(h)) for h in ("pw-record", "pw-link", "pw-dump", "pactl", "parec", "notify-send", "xdg-open")}
     return {"version": VERSION, "escritorio": pantalla.escritorio(), "capturas": pantalla.herramientas(),
-            "monitores": pantalla.monitores(), "audio": herramientas, "pipewire": all(herramientas[h] for h in ("pw-record", "pw-link", "pw-dump")),
-            "cuda": wh.hay_cuda(), "whisper_sugerido": wh.modelo_sugerido(), "vram_gb": modelos.vram_gb(), "ram_gb": modelos.ram_gb(),
+            "monitores": pantalla.monitores(), "audio": herramientas, "pipewire": all(herramientas[h] for h in ("pw-record", "pw-link", "pw-dump")) or herramientas["parec"],
+            "motor_audio": motor_audio(), **faltantes(), "cuda": wh.hay_cuda(), "whisper_sugerido": wh.modelo_sugerido(), "vram_gb": modelos.vram_gb(), "ram_gb": modelos.ram_gb(),
             "compartir": pantalla.estado_compartir(), "gstreamer": pantalla.gstreamer_listo() if pantalla.usar_compartir() else None,
             "datos": str(RAIZ), "notas": str(carpeta_notas()), "config": str(CONFIG), "puerto": PUERTO,
             "whisper": {"cargado": WHISPER["nombre"], "donde": WHISPER["donde"]}, "repo": REPO,
@@ -998,12 +1284,12 @@ Qué necesito que hagas, paso a paso y preguntándome antes de instalar nada:
    - Para agregar una API compatible con OpenAI (Gemini, NVIDIA, OpenRouter, Groq, OpenAI u otra), pídeme la clave y ejecuta:
      `curl -s -X POST http://127.0.0.1:{PUERTO}/api/modelos/proveedor -H 'Content-Type: application/json' -d '{{"tipo":"gemini","api_key":"<CLAVE>"}}'`
      (tipos: gemini, nvidia, openrouter, groq, openai, otro; con "otro" manda también "base_url", "texto" y "vision" = nombres de modelo).
-   - Pruébala: `curl -s -X POST http://127.0.0.1:{PUERTO}/api/modelos/probar -d '{{"id":"<id que devolvió>"}}'`
+   - Pruébala: `curl -s -X POST http://127.0.0.1:{PUERTO}/api/modelos/probar -H 'Content-Type: application/json' -d '{{"id":"<id que devolvió>"}}'`
    - Modelo local (Ollama): si tengo Ollama, mira qué modelos con visión tengo en la respuesta de /api/modelos («ollama.modelos», campo "vision"). Si no hay ninguno, recomiéndame el de «ollama.recomendado» y descárgalo con
-     `curl -s -X POST http://127.0.0.1:{PUERTO}/api/modelos/descargar -d '{{"modelo":"<nombre>"}}'`. Si no tengo Ollama, explícame cómo instalarlo (https://ollama.com/download).
+     `curl -s -X POST http://127.0.0.1:{PUERTO}/api/modelos/descargar -H 'Content-Type: application/json' -d '{{"modelo":"<nombre>"}}'`. Si no tengo Ollama, explícame cómo instalarlo (https://ollama.com/download).
 3. Elige con mi permiso la pantalla donde estará la reunión: `curl -s http://127.0.0.1:{PUERTO}/api/monitores` y luego
-   `curl -s -X POST http://127.0.0.1:{PUERTO}/api/ajustes -d '{{"monitor":"<nombre>"}}'`.
-4. Perfil (opcional, mejora las respuestas): `curl -s -X POST http://127.0.0.1:{PUERTO}/api/ajustes -d '{{"nombre":"…","rol":"…","proyectos":"…"}}'`.
+   `curl -s -X POST http://127.0.0.1:{PUERTO}/api/ajustes -H 'Content-Type: application/json' -d '{{"monitor":"<nombre>"}}'`.
+4. Perfil (opcional, mejora las respuestas): `curl -s -X POST http://127.0.0.1:{PUERTO}/api/ajustes -H 'Content-Type: application/json' -d '{{"nombre":"…","rol":"…","proyectos":"…"}}'`.
 5. Al final abre la app (`tomo abrir`) y dime que pulse «Empezar» en una reunión de prueba.
 
 Reglas: no muestres mis claves en pantalla, no edites archivos de Tomo a mano si la API lo permite, y explícame todo en lenguaje simple.
@@ -1030,8 +1316,23 @@ class Manejador(BaseHTTPRequestHandler):
         except json.JSONDecodeError:
             return {}
 
+    def _ajeno(self, post=False):
+        """Tomo solo atiende a su propia app y a la terminal: otra página abierta en el navegador no puede
+        leer las reuniones ni cambiar la configuración (p. ej. poner una API suya para llevarse lo que se dice)."""
+        propios = {f"127.0.0.1:{PUERTO}", f"localhost:{PUERTO}"}
+        if (self.headers.get("Host") or "").lower() not in propios:
+            return True
+        origen = self.headers.get("Origin")
+        if origen and origen.lower().removeprefix("http://") not in propios:
+            return True
+        if self.headers.get("Sec-Fetch-Site") in ("cross-site", "same-site"):
+            return True
+        return post and "application/json" not in (self.headers.get("Content-Type") or "")
+
     def do_GET(self):
         ruta = self.path.split("?")[0]
+        if self._ajeno() and ruta.startswith(("/api/", "/captura/")):
+            return self._json({"error": "solo la app de Tomo puede pedir esto"}, 403)
         if ruta == "/api/estado":
             return self._json(estado())
         if ruta == "/api/historial":
@@ -1040,12 +1341,20 @@ class Manejador(BaseHTTPRequestHandler):
             return self._json(modelos.publico())
         if ruta == "/api/sistema":
             return self._json(sistema())
+        if ruta == "/api/notas":
+            q = urllib.parse.parse_qs(self.path.partition("?")[2])
+            return self._json({"notas": listar_notas((q.get("q") or [""])[0]), "carpeta": str(carpeta_notas())})
         if ruta == "/api/nota":
-            f = Path(urllib.parse.unquote((urllib.parse.parse_qs(self.path.partition("?")[2]).get("ruta") or [""])[0])).resolve()
-            if f.suffix != ".md" or not f.is_file() or not (carpeta_notas().resolve() in f.parents or RAIZ.resolve() in f.parents):
+            q = urllib.parse.parse_qs(self.path.partition("?")[2])
+            if q.get("nombre"):
+                f = buscar_nota(q["nombre"][0])
+                if not f:
+                    return self._json({"error": f"no hay una nota llamada «{q['nombre'][0]}»"}, 404)
+            else:
+                f = Path((q.get("ruta") or [""])[0]).resolve()
+            if not f.is_file() or not nota_permitida(f):
                 return self._json({"error": "esa nota no se puede leer"}, 400)
-            return self._json({"ruta": str(f), "nombre": f.stem, "texto": f.read_text(encoding="utf-8"),
-                               "obsidian": bool(boveda_obsidian(f))})
+            return self._json(datos_nota(f))
         if ruta == "/api/github":
             return self._json(github())
         if ruta == "/api/novedades":
@@ -1107,6 +1416,8 @@ class Manejador(BaseHTTPRequestHandler):
         self.wfile.write(datos)
 
     def do_POST(self):
+        if self._ajeno(post=True):
+            return self._json({"error": "solo la app de Tomo puede pedir esto (usa Content-Type: application/json)"}, 403)
         ruta, d = self.path.split("?")[0], self._cuerpo()
         s = SESION["actual"]
         activa = s is not None and s.estado in ("cargando", "escuchando", "pausado")
@@ -1121,19 +1432,60 @@ class Manejador(BaseHTTPRequestHandler):
                 SESION["actual"] = Sesion(str(d.get("tema", "")), ajustes)
                 SESION["actual"].empezar()
             return self._json(estado())
-        if ruta == "/api/abrir":
+        if ruta == "/api/abrir":          # abrir fuera de Tomo, solo con apps que existan
             f = Path(str(d.get("ruta", ""))).resolve()
-            notas = carpeta_notas().resolve()
-            if not f.is_file() or not (notas in f.parents or RAIZ.resolve() in f.parents):
+            if not f.is_file() or not nota_permitida(f):
                 return self._json({"error": "esa ruta no se puede abrir"}, 400)
-            boveda = boveda_obsidian(f) if f.suffix == ".md" else None
-            if boveda and d.get("en") != "carpeta":   # vault + file: lo más fiable (también con Obsidian en Flatpak)
+            en, puede = d.get("en", "app"), como_abrir(f)
+            if en == "obsidian" and puede["obsidian"]:   # vault + file: lo más fiable (también con Obsidian en Flatpak)
+                boveda = boveda_obsidian(f)
                 rel = f.relative_to(boveda).with_suffix("").as_posix()
                 uri = f"obsidian://open?vault={urllib.parse.quote(boveda.name)}&file={urllib.parse.quote(rel)}"
+            elif en == "carpeta" and puede["carpeta"]:
+                uri = str(f.parent)
+            elif en == "app" and puede["app"]:
+                uri = str(f)
             else:
-                uri = str(f.parent if d.get("en") == "carpeta" else f)
-            subprocess.Popen(["xdg-open", uri], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=pantalla.entorno())
+                return self._json({"error": "no hay una app instalada para eso; la nota se puede ver y editar aquí en Tomo"}, 400)
+            if not shutil.which("xdg-open"):
+                return self._json({"error": "falta xdg-open (paquete xdg-utils)"}, 400)
+            p = subprocess.Popen(["xdg-open", uri], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=pantalla.entorno())
+            try:
+                if p.wait(timeout=3):
+                    return self._json({"error": "el sistema no pudo abrirla"}, 400)
+            except subprocess.TimeoutExpired:
+                pass      # sigue abriéndose
             return self._json({"ok": True})
+        if ruta == "/api/nota":           # guardar lo editado en Tomo, o crear una nota nueva
+            if d.get("nuevo") is not None:
+                raiz = carpeta_notas()
+                raiz.mkdir(parents=True, exist_ok=True)
+                titulo = str(d["nuevo"]).strip()[:120] or "Nota nueva"
+                f = raiz / f"{datetime.now():%Y-%m-%d}-{slug(titulo)}.md"
+                n = 2
+                while f.exists():
+                    f = raiz / f"{datetime.now():%Y-%m-%d}-{slug(titulo)}-{n}.md"
+                    n += 1
+                f.write_text(f"# {titulo}\n\n", encoding="utf-8")
+                return self._json(datos_nota(f))
+            f = Path(str(d.get("ruta", ""))).resolve()
+            if not f.is_file() or not nota_permitida(f):
+                return self._json({"error": "esa nota no se puede guardar"}, 400)
+            if d.get("mtime") and abs(f.stat().st_mtime - float(d["mtime"])) > 0.01:
+                return self._json({"error": "la nota cambió fuera de Tomo; recárgala antes de guardar", "conflicto": True}, 409)
+            tmp = f.with_name(f".{f.name}.tomo-tmp")
+            tmp.write_text(str(d.get("texto", "")), encoding="utf-8")
+            tmp.replace(f)
+            return self._json({"ok": True, "mtime": f.stat().st_mtime})
+        if ruta == "/api/nota/rehacer":
+            f = Path(str(d.get("ruta", ""))).resolve()
+            if not f.is_file() or not nota_permitida(f):
+                return self._json({"error": "esa nota no se puede rehacer"}, 400)
+            try:
+                rehacer_nota(f)
+            except Exception as e:
+                return self._json({"error": str(e)}, 400)
+            return self._json(datos_nota(f))
         if ruta == "/api/compartir":
             pantalla.compartir(elegir=bool(d.get("elegir")))
             return self._json(pantalla.estado_compartir())

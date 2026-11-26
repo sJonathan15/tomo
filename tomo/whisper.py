@@ -43,8 +43,11 @@ def hay_cuda():
 
 def modelo_sugerido():
     """GPU → large-v3-turbo (≈1,6 GB, el mejor en español). Solo CPU → small (rápido) o medium si hay RAM."""
-    if hay_cuda():
-        return "large-v3-turbo"
+    return "large-v3-turbo" if hay_cuda() else modelo_cpu()
+
+
+def modelo_cpu():
+    """Para la CPU: medium si el equipo es holgado (16 GB y 8 núcleos), si no small."""
     try:
         kb = int(next(l for l in open("/proc/meminfo") if l.startswith("MemTotal")).split()[1])
     except Exception:
@@ -71,5 +74,5 @@ def cargar(nombre="auto"):
         except Exception as e:
             print(f"GPU no disponible ({e}); uso CPU", file=sys.stderr, flush=True)
     if nombre.startswith("large"):
-        nombre = modelo_sugerido() if not hay_cuda() else "medium"
+        nombre = modelo_cpu()
     return WhisperModel(nombre, device="cpu", compute_type="int8", cpu_threads=max(2, (os.cpu_count() or 4) - 2)), nombre, "cpu"

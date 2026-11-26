@@ -78,12 +78,13 @@ function pintarPaso() {
     html = `<h2 id="asis-titulo">Revisé tu equipo</h2>
       <p class="asis-desc">Esto es lo que encontré. Lo marcado en amarillo trae la solución al lado.</p>
       <div class="deps">
-        ${filaDep(!!si.pipewire, "Audio (PipeWire)", si.pipewire ? "listo para oír la reunión" : "falta: instala <code>pipewire</code> y vuelve a correr el instalador")}
+        ${filaDep(!!si.pipewire, "Audio", si.motor_audio === "pipewire" ? "PipeWire: listo para oír la reunión" : si.motor_audio === "pulse" ? "PulseAudio: oigo lo que suena por tu salida" : "falta: instala <code>pipewire</code> (abajo está el comando)")}
         ${filaDep((si.capturas || []).length > 0, "Captura de pantalla", (si.capturas || []).length ? esc(si.capturas.join(", ")) + ((si.capturas || [])[0] === "portal" ? " · la primera vez tu escritorio te pedirá <b>Permitir</b>" : "") : "falta: instala python3-gi, grim, spectacle o maim")}
         ${filaDep(true, "Oído (Whisper)", si.cuda ? `tarjeta NVIDIA · usaré <b>${esc(si.whisper_sugerido)}</b>` : `sin tarjeta NVIDIA · usaré <b>${esc(si.whisper_sugerido || "small")}</b> en la CPU`)}
-        ${filaDep(!!si.audio?.["notify-send"], "Avisos en el escritorio", si.audio?.["notify-send"] ? "listos" : "opcional: instala libnotify")}
+        ${filaDep(true, "Avisos de preguntas", si.audio?.["notify-send"] ? "en el escritorio" : "con los avisos del navegador (te pedirá permiso al empezar)")}
         ${filaDep(!!ol.corriendo, "Modelos locales (Ollama)", ol.corriendo ? `${(ol.modelos || []).filter((x) => x.vision).length} con visión instalados` : (ol.instalado ? "instalado pero apagado" : "opcional: <a class='enlace' href='https://ollama.com/download' target='_blank' rel='noopener'>ollama.com</a>"))}
       </div>
+      ${(si.faltan || []).length && si.comando ? `<div class="cmd"><code>${esc(si.comando)}</code><button class="btn chico primario" data-copiar-comando="${esc(si.comando)}">Copiar</button></div>` : ""}
       <div class="asis-carpeta"><span>Tus notas se guardan en</span><code>${esc(si.notas || "~/Documentos/Tomo/Notas")}</code><a class="enlace" href="#/ajustes" data-asis="cerrar">cambiar</a></div>`;
   } else if (paso === 3) {
     const ol = (datosModelos || {}).ollama || {};
@@ -143,6 +144,7 @@ const RECORRIDO = [
   ["#compositor", "Resolver ejercicios", "Pega el enunciado o una captura (Ctrl+V). Suma las reglas que dijo el profe y pulsa Resolver. Puedes pedir cambios sobre la misma solución."],
   [".vivo-ojo", "Lo que ve Tomo", "La pantalla de la reunión en vivo. Si tienes dos monitores, elige aquí en cuál está la videollamada."],
   [".tr", "Todo lo que se dijo", "La transcripción completa: busca, marca frases con un clic (Mayús+clic para un tramo) y cópialas o úsalas como reglas."],
+  [".nav[data-vista=notas]", "Tus notas", "Cada reunión deja una nota en Markdown. Aquí la lees, la buscas, la editas o la sacas en PDF, sin instalar nada más (y si usas Obsidian, también se abre ahí)."],
   ["#r-ini-hist", "Tus reuniones", "Cada reunión queda guardada con su transcripción, preguntas, ejercicios y una nota en Markdown."],
   [".nav[data-vista=ajustes]", "Ajustes", "Modelos de IA, tu perfil, la pantalla, el audio y la carpeta de notas. Puedes volver a ver este recorrido con el botón «?»."],
   ["#btn-estrella", "Apoya a Tomo", "Si te sirve, una estrella en GitHub nos ayuda muchísimo. ¡Gracias!"],

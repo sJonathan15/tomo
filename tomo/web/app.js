@@ -121,7 +121,7 @@ function hallazgo(s) {
   const q = (s.preguntas || [])[0];
   if (s.estado === "resumiendo") return "Escribiendo la nota con lo aprendido…";
   if (s.estado === "error") return `Algo falló: ${esc(s.error)}`;
-  if (s.estado === "cargando") return "Cargando el oído, unos segundos…";
+  if (s.estado === "cargando") return esc(s.detalle || "Cargando el oído, unos segundos…");
   if (q) return `Última pregunta ${hace(s.seg - q.s)}: <b>${esc(q.cual)}</b>`;
   return "Aún sin preguntas. Te aviso con un globito cuando aparezca una.";
 }
@@ -453,6 +453,7 @@ function pintarInicio(ultima) {
     $("#form-empezar").addEventListener("submit", async (e) => {
       e.preventDefault();
       try {
+        pedirPermisoAvisos();
         await api("/api/ajustes", { pantalla: $("#pant").checked });
         estado = await api("/api/empezar", { tema: $("#tema").value, microfono: $("#mic").checked });
         pintar();
@@ -571,6 +572,7 @@ async function pintarAjustes() {
   vista.innerHTML = `<div class="pagina"><header class="titulo s12"><h1>Ajustes</h1>
       <p class="bajada">Whisper (el oído) corre siempre en tu equipo. Leer la pantalla, responder y resolver ejercicios usa los modelos que elijas aquí: APIs en la nube, tu modelo local, o ambos en cadena.</p></header>
     <div class="s12">
+      ${htmlFaltan(si)}
       <div class="ajuste" id="modelos"><div><h3>Modelos de IA</h3><p>Tomo prueba las APIs en orden; si una se queda sin cupo pasa sola a la siguiente y, al final, a tu modelo local. Nunca se queda sin ojos.</p>
           <button class="btn chico" data-copiar-prompt style="margin-top:14px">Copiar prompt para tu agente</button>
           <p class="nota-peq">Pégalo en Claude Code, Codex o Gemini CLI y te guía para configurarlo.</p></div>
@@ -607,13 +609,22 @@ async function pintarAjustes() {
           ${[["auto", `Automático (${si.whisper_sugerido || "según tu equipo"})`], ["large-v3-turbo", "large-v3-turbo"], ["large-v3", "large-v3"], ["medium", "medium"], ["small", "small"], ["base", "base"]]
             .map(([v, t]) => `<option value="${v}" ${(a.modelo || "auto") === v ? "selected" : ""}>${t}</option>`).join("")}
         </select></div></div>
-      <div class="ajuste"><div><h3>Notas</h3><p>Al terminar, Tomo escribe una nota en Markdown. Si eliges una carpeta dentro de tu bóveda de Obsidian, se abre directo ahí.</p></div>
+      <div class="ajuste"><div><h3>Notas</h3><p>Al terminar, Tomo escribe una nota en Markdown que puedes leer, buscar y editar en la pestaña <a class="enlace" href="#/notas">Notas</a>. Si usas Obsidian, elige una carpeta dentro de tu bóveda y también se abrirán ahí.</p></div>
         <div class="opciones"><label class="campo-peq">Carpeta de notas<input data-ajuste="notas" value="${esc(a.notas)}" placeholder="${esc(si.notas || "~/Documentos/Tomo/Notas")}"></label></div></div>
       <p class="nota-peq s12">Tomo ${esc(si.version || "")} · un proyecto de MIRAI · datos en ${esc(si.datos || "")}</p>
     </div></div>`;
   region("r-modelos", piezaModelos(modelosInfo));
   ajustarFormApi();
   if (location.hash.includes("modelos")) $("#modelos")?.scrollIntoView();
+}
+
+function htmlFaltan(si) {
+  const f = si.faltan || [];
+  if (!f.length) return "";
+  return `<div class="faltan" role="status"><div><h3>${f.some((x) => x.obligatorio) ? "Falta algo para que Tomo funcione completo" : "Opcional: mejora Tomo"}</h3>
+      <ul>${f.map((x) => `<li><b>${esc(x.que)}</b> — para ${esc(x.para)}${x.obligatorio ? "" : ' <span class="chip">opcional</span>'}</li>`).join("")}</ul></div>
+    ${si.comando ? `<div class="cmd"><code>${esc(si.comando)}</code><button class="btn chico primario" data-copiar-comando="${esc(si.comando)}">Copiar</button></div>
+      <p class="nota-peq">Pégalo en la terminal, escribe tu contraseña y recarga esta página.</p>` : ""}</div>`;
 }
 
 function ajustarFormApi() {
@@ -638,7 +649,7 @@ const ruta = () => location.hash.replace(/^#/, "") || "/";
 
 function marcarNav() {
   const r = ruta();
-  const v = r.startsWith("/historial") ? "historial" : r.startsWith("/ajustes") ? "ajustes" : "vivo";
+  const v = r.startsWith("/historial") ? "historial" : r.startsWith("/ajustes") ? "ajustes" : r.startsWith("/notas") ? "notas" : "vivo";
   $$(".nav").forEach((a) => a.dataset.vista === v ? a.setAttribute("aria-current", "page") : a.removeAttribute("aria-current"));
 }
 
@@ -656,6 +667,7 @@ async function pintar() {
   if (r === "/historial") return pintarHistorial();
   if (r.startsWith("/historial/")) return pintarReunion(r.split("/")[2]);
   if (r.startsWith("/ajustes")) return pintarAjustes();
+  if (r.startsWith("/notas")) return pintarNotas(decodeURIComponent(r.slice(7)));
 }
 
 // ------------------------------------------------------------------ novedades (al estrenar versión) y actualizaciones
@@ -728,9 +740,32 @@ function revisarVersion() {
   else if (!revisarVersion.dicho) { revisarVersion.dicho = true; avisar("Hay una versión nueva: se recarga cuando termines (o pulsa F5)"); }
 }
 
+// ------------------------------------------------------------------ avisos del navegador (si el escritorio no tiene notify-send)
+const vistas = new Set();
+let primeraVuelta = true;
+function avisosNavegador() {
+  const s = estado?.sesion;
+  if (!s) return;
+  for (const q of s.preguntas || []) {
+    const clave = `${q.id}:${q.estado}`;
+    if (vistas.has(clave)) continue;
+    vistas.add(clave);
+    if (primeraVuelta || q.estado !== "lista" || estado.avisos_sistema || estado.ajustes?.globitos === false) continue;
+    if (!document.hidden || !("Notification" in window) || Notification.permission !== "granted") continue;
+    const n = new Notification(`Tomo · ${q.cual.slice(0, 110)}`, { body: (q.respuesta || "").slice(0, 300), icon: "/icono.svg", tag: q.id });
+    n.onclick = () => { window.focus(); location.hash = "#/"; n.close(); };
+  }
+  primeraVuelta = false;
+}
+
+function pedirPermisoAvisos() {
+  if (!estado?.avisos_sistema && "Notification" in window && Notification.permission === "default") Notification.requestPermission();
+}
+
 async function sondear() {
   try {
     estado = await api("/api/estado");
+    avisosNavegador();
     revisarVersion();
     pintarPildoraAct();
     mostrarNovedadesSiToca();
@@ -794,28 +829,6 @@ function usarSeleccion() {
   pintarSeleccion();
   pintarCompositor();
   avisar(`${nuevas.length} ${plural(nuevas.length, "frase")} como reglas del ejercicio`);
-}
-
-// ------------------------------------------------------------------ ver la nota dentro de Tomo
-let notaAbierta = "";
-async function verNota(ruta) {
-  let d;
-  try { d = await api(`/api/nota?ruta=${encodeURIComponent(ruta)}`); } catch (err) { avisar(err.message); return; }
-  notaAbierta = d.texto;
-  const cuerpo = d.texto.replace(/^---[\s\S]*?---\n/, "");
-  document.querySelector(".velo-nota")?.remove();
-  const v = document.createElement("div");
-  v.className = "velo velo-nota";
-  v.innerHTML = `<aside class="hoja-nota" role="dialog" aria-modal="true" aria-label="Nota de la reunión">
-    <header><div><span class="sub" style="margin:0">Nota de la reunión</span><h2>${esc(d.nombre)}</h2></div>
-      <button class="btn chico fantasma" data-cerrar-nota aria-label="Cerrar">✕</button></header>
-    <div class="acc-nota">
-      ${d.obsidian ? `<button class="btn chico primario" data-nota-en="obsidian" data-ruta="${esc(d.ruta)}">Abrir en Obsidian</button>` : `<button class="btn chico primario" data-nota-en="archivo" data-ruta="${esc(d.ruta)}">Abrir el archivo</button>`}
-      <button class="btn chico" data-nota-en="carpeta" data-ruta="${esc(d.ruta)}">Abrir la carpeta</button>
-      <button class="btn chico" data-copiar-nota>Copiar Markdown</button></div>
-    <article class="msj-cop cuerpo-nota">${md(cuerpo)}</article></aside>`;
-  document.body.appendChild(v);
-  v.addEventListener("click", (e) => { if (e.target === v) v.remove(); });
 }
 
 // ------------------------------------------------------------------ eventos
@@ -922,14 +935,9 @@ document.addEventListener("click", async (e) => {
       copiar(tr.lineas.map((l) => `[${hora(l.t)}] ${l.quien}: ${l.texto}`).join("\n"), "Transcripción copiada");
     } else if (ds.abrir) {
       e.stopPropagation();
-      await verNota(ds.abrir);
-    } else if (ds.notaEn) {
-      await api("/api/abrir", { ruta: ds.ruta, en: ds.notaEn });
-      avisar(ds.notaEn === "carpeta" ? "Abriendo la carpeta…" : "Abriendo en Obsidian…");
-    } else if ("cerrarNota" in ds) {
-      document.querySelector(".velo-nota")?.remove();
-    } else if ("copiarNota" in ds) {
-      copiar(notaAbierta, "Nota copiada");
+      location.hash = `#/notas/${encodeURIComponent(ds.abrir)}`;
+    } else if ("copiarComando" in ds) {
+      copiar(ds.copiarComando, "Comando copiado: pégalo en la terminal");
     } else if (ds.ir) {
       location.hash = ds.ir;
     }

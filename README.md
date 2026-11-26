@@ -20,7 +20,8 @@ Un proyecto de **MIRAI** · 未来 · *el futuro, hoy*.
 - **Resuelve ejercicios**: pega el enunciado o una captura (`Ctrl`+`V`), marca en la transcripción las reglas que dio el profe y pulsa *Resolver*. Puedes pedir cambios sobre la misma solución.
 - **Mira la pantalla correcta**: eliges el monitor de la reunión y ves en vivo lo que Tomo está mirando. Cada 20 s revisa si cambió la diapositiva.
 - **Historial completo** de lo que se dijo: buscar, marcar frases y copiarlas.
-- **Nota final en Markdown** (compatible con Obsidian): resumen, temas, herramientas mencionadas, ideas para tus proyectos y preguntas.
+- **Nota final en Markdown**: resumen, temas, herramientas mencionadas, ideas para tus proyectos y preguntas. Si ningún modelo responde al terminar, igual queda una nota con todo lo dicho (y la rehaces con IA después).
+- **Notas dentro de Tomo**: léelas, búscalas, edítalas y sácalas en PDF sin instalar nada más. Si usas Obsidian, también se abren ahí.
 - **Nunca se queda sin ojos**: varias APIs en cadena y, si todas se quedan sin cupo, tu modelo local de Ollama.
 - **Claro u oscuro** según tu sistema (o el que elijas), con los colores de MIRAI.
 - **Asistente de bienvenida y recorrido guiado**: en el primer uso revisa tu equipo, te ayuda a elegir el modelo de IA y la pantalla; el botón «?» te muestra cada parte de la app.
@@ -37,7 +38,7 @@ Un proyecto de **MIRAI** · 未来 · *el futuro, hoy*.
 curl -fsSL https://raw.githubusercontent.com/sJonathan15/tomo/main/install.sh | bash
 ```
 
-Funciona en **Ubuntu/Debian, Fedora, Arch/CachyOS/Manjaro y openSUSE**, con **KDE, GNOME, Hyprland, Sway, niri o X11**. Requisito: **PipeWire** (viene por defecto en Ubuntu 22.10+, Fedora 34+ y Arch).
+Funciona en **Ubuntu/Debian, Fedora, Arch/CachyOS/Manjaro y openSUSE**, con **KDE, GNOME, Hyprland, Sway, niri o X11**. Audio: **PipeWire** (Ubuntu 22.10+, Fedora 34+, Arch) o PulseAudio (Ubuntu 22.04; ahí escucha lo que suena por tu salida). Si falta algo, la app te dice qué y te da el comando para tu distro.
 
 El instalador agrega lo que falte del sistema (pide tu contraseña solo para eso), crea su propio entorno de Python con Whisper, registra el servicio de usuario y el lanzador **Tomo** en tu menú. Si tienes tarjeta NVIDIA la usa; si no, Whisper corre en la CPU con un modelo más liviano.
 
@@ -75,6 +76,7 @@ pantalla (monitor elegido) ──► captura cada 20 s, solo si cambió ──�
 - App: HTML + CSS + JS sin dependencias (`tomo/web/`), se recarga sola cuando se actualiza.
 - Si el motor se reinicia en plena reunión, la retoma sin perder nada. Si la tarjeta de video se llena, Whisper pasa a la CPU; si se corta el audio, se relanza.
 - Datos: `~/Documentos/Tomo` (una carpeta por reunión) y notas en `~/Documentos/Tomo/Notas` (o la carpeta que elijas, por ejemplo dentro de tu bóveda de Obsidian).
+- Solo responde a su propia app y a la terminal: otras páginas abiertas en el navegador no pueden leer tus reuniones ni cambiar la configuración (se revisan `Host`, `Origin` y `Content-Type`).
 
 ## Actualizaciones
 
@@ -99,6 +101,7 @@ MIT © 2026 Jonathan Cañar · MIRAI. Nombre, icono y diseño son originales de 
 - Install: `curl -fsSL https://raw.githubusercontent.com/sJonathan15/tomo/main/install.sh | bash` (Ubuntu/Debian, Fedora, Arch, openSUSE · KDE, GNOME, Hyprland, Sway, niri, X11 · PipeWire required).
 - AI models: any OpenAI-compatible API (Gemini, NVIDIA NIM, OpenRouter, Groq, OpenAI…) chained in order, plus a local Ollama vision model as the last fallback. Tomo detects installed models and recommends one for your GPU.
 - The UI is in Spanish for now; transcription and answers follow the meeting language (`Settings › Language`).
+- Notes live inside Tomo (read, search, edit, PDF); Obsidian is optional. If no model answers at the end, a plain note is still written and can be redone with AI later.
 
 ---
 

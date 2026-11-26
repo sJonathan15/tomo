@@ -2,7 +2,8 @@
 
 Captura (la primera herramienta que exista y funcione):
   KDE Plasma → spectacle · Hyprland/Sway/niri/wlroots → grim · GNOME → gnome-screenshot ·
-  X11 → maim / import (ImageMagick) / scrot.
+  X11 → maim / import / scrot. GNOME en Wayland → compartir pantalla por el portal (como Zoom).
+Las imágenes se procesan con Pillow (ImageMagick solo de respaldo).
 Monitores: kscreen-doctor (KDE) · hyprctl · swaymsg · niri msg · xrandr (X11 y XWayland en GNOME).
 Con un monitor elegido se recorta la captura de todo el escritorio a esa pantalla (como «compartir una
 pantalla» en Zoom). grim puede capturar un monitor directamente.
@@ -15,6 +16,11 @@ import subprocess
 import threading
 import time
 from pathlib import Path
+
+try:                     # Pillow (pip) para recortar, reducir y comparar capturas; ImageMagick queda de respaldo
+    from PIL import Image, ImageStat
+except ImportError:      # pragma: no cover
+    Image = None
 
 _lock = threading.Lock()
 
@@ -170,8 +176,14 @@ def _capturar(png: Path, herramienta, salida=""):
 def _no_negra(png: Path):
     """En Wayland algunas herramientas «funcionan» pero entregan la pantalla en negro: eso cuenta como fallo."""
     try:
-        cmd = (["magick"] if shutil.which("magick") else ["convert"]) + [str(png), "-resize", "64x", "-colorspace", "gray", "-format", "%[fx:mean]", "info:"]
-        media = float(subprocess.run(cmd, capture_output=True, text=True, timeout=10).stdout or 1)
+        if Image:
+            with Image.open(png) as im:
+                g = im.convert("L")
+                g.thumbnail((64, 64))
+                media = ImageStat.Stat(g).mean[0] / 255
+        else:
+            cmd = _magick() + [str(png), "-resize", "64x", "-colorspace", "gray", "-format", "%[fx:mean]", "info:"]
+            media = float(subprocess.run(cmd, capture_output=True, text=True, timeout=10).stdout or 1)
     except Exception:
         return
     if media < 0.004:
@@ -184,6 +196,9 @@ def _magick():
 
 
 def _identificar(png):
+    if Image:
+        with Image.open(png) as im:
+            return im.size
     cmd = ["magick", "identify"] if shutil.which("magick") else ["identify"]
     return tuple(map(int, subprocess.run(cmd + ["-format", "%w %h", str(png)], capture_output=True, text=True,
                                          timeout=10).stdout.split()))
@@ -301,21 +316,44 @@ def capturar(png: Path, monitor=""):
                 if monitor and not directo:
                     geo = recorte(png, monitor)
                     if geo:
-                        subprocess.run(_magick() + [str(png), "-crop", geo, "+repage", str(png)], timeout=10, check=True)
+                        _recortar(png, geo)
                 return png
             except Exception as e:
                 ultimo = e
         raise RuntimeError(f"no pude capturar la pantalla: {ultimo}")
 
 
+def _recortar(png: Path, geo: str):
+    w, h, x, y = map(int, re.match(r"(\d+)x(\d+)\+(\d+)\+(\d+)", geo).groups())
+    if Image:
+        with Image.open(png) as im:
+            im.load()
+            fmt = im.format or "PNG"
+            im.crop((x, y, x + w, y + h)).save(png, fmt)
+        return
+    subprocess.run(_magick() + [str(png), "-crop", geo, "+repage", str(png)], timeout=10, check=True)
+
+
 def jpeg(png: Path, ancho=1280, calidad=72):
     """Bytes JPEG reducidos de una captura."""
+    if Image:
+        import io
+        with Image.open(png) as im:
+            im = im.convert("RGB")
+            if im.width > ancho:
+                im = im.resize((ancho, round(im.height * ancho / im.width)), Image.LANCZOS)
+            b = io.BytesIO()
+            im.save(b, "JPEG", quality=calidad)
+            return b.getvalue()
     return subprocess.run(_magick() + [str(png), "-resize", f"{ancho}x>", "-quality", str(calidad), "jpg:-"],
                           timeout=10, check=True, capture_output=True).stdout
 
 
 def huella(png: Path):
     """32×18 en grises, para saber si cambió la diapositiva sin llamar a ningún modelo."""
+    if Image:
+        with Image.open(png) as im:
+            return im.convert("L").resize((32, 18), Image.BILINEAR).tobytes()
     return subprocess.run(_magick() + [str(png), "-resize", "32x18!", "-colorspace", "gray", "gray:-"],
                           timeout=10, check=True, capture_output=True).stdout
 

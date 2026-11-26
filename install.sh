@@ -5,7 +5,7 @@
 #   ./install.sh               instala o actualiza
 #   ./install.sh --desinstalar quita Tomo (tus notas y reuniones se quedan)
 #
-# Qué hace: instala lo del sistema que falte (PipeWire, ImageMagick, captura de pantalla, notificaciones),
+# Qué hace: instala lo del sistema que falte (PipeWire, captura de pantalla, notificaciones),
 # clona el repo en ~/.local/share/tomo, crea un entorno de Python con Whisper, registra el servicio de
 # usuario (systemd) y el lanzador «Tomo» en el menú. No toca nada fuera de tu usuario salvo los paquetes.
 set -euo pipefail
@@ -45,28 +45,28 @@ case "$escritorio" in
 esac
 
 if command -v apt-get >/dev/null; then
-  paquetes=(git python3 python3-venv python3-pip pipewire-bin pulseaudio-utils imagemagick libnotify-bin x11-xserver-utils xdg-user-dirs curl python3-gi xdg-desktop-portal gstreamer1.0-pipewire gstreamer1.0-plugins-good gir1.2-gstreamer-1.0 gir1.2-gst-plugins-base-1.0)
+  paquetes=(git python3 python3-venv python3-pip pipewire-bin pulseaudio-utils libnotify-bin x11-xserver-utils xdg-user-dirs xdg-utils curl python3-gi xdg-desktop-portal gstreamer1.0-pipewire gstreamer1.0-plugins-good gir1.2-gstreamer-1.0 gir1.2-gst-plugins-base-1.0)
   [[ -n "$captura" ]] && paquetes+=("$captura")
   faltan=(); for p in "${paquetes[@]}"; do dpkg -s "$p" >/dev/null 2>&1 || faltan+=("$p"); done
   if ((${#faltan[@]})); then gris "sudo apt-get install ${faltan[*]}"; sudo apt-get update -qq && sudo apt-get install -y "${faltan[@]}"; fi
 elif command -v dnf >/dev/null; then
-  paquetes=(git python3 python3-pip pipewire-utils pulseaudio-utils ImageMagick libnotify xrandr xdg-user-dirs curl python3-gobject xdg-desktop-portal pipewire-gstreamer gstreamer1-plugins-good)
+  paquetes=(git python3 python3-pip pipewire-utils pulseaudio-utils libnotify xrandr xdg-user-dirs xdg-utils curl python3-gobject xdg-desktop-portal pipewire-gstreamer gstreamer1-plugins-good)
   [[ -n "$captura" ]] && paquetes+=("$captura")
   gris "sudo dnf install ${paquetes[*]}"; sudo dnf install -y "${paquetes[@]}"
 elif command -v pacman >/dev/null; then
-  paquetes=(git python python-pip pipewire pipewire-pulse libpulse imagemagick libnotify xorg-xrandr xdg-user-dirs curl python-gobject xdg-desktop-portal gst-plugin-pipewire gst-plugins-good)
+  paquetes=(git python python-pip pipewire pipewire-pulse libpulse libnotify xorg-xrandr xdg-user-dirs xdg-utils curl python-gobject xdg-desktop-portal gst-plugin-pipewire gst-plugins-good)
   [[ -n "$captura" ]] && paquetes+=("$captura")
   faltan=(); for p in "${paquetes[@]}"; do pacman -Qi "$p" >/dev/null 2>&1 || faltan+=("$p"); done
   if ((${#faltan[@]})); then gris "sudo pacman -S ${faltan[*]}"; sudo pacman -S --needed --noconfirm "${faltan[@]}"; fi
 elif command -v zypper >/dev/null; then
-  paquetes=(git python3 python3-pip pipewire-tools pulseaudio-utils ImageMagick libnotify-tools xrandr xdg-user-dirs curl python3-gobject xdg-desktop-portal gstreamer-plugin-pipewire gstreamer-plugins-good typelib-1_0-Gst-1_0)
+  paquetes=(git python3 python3-pip pipewire-tools pulseaudio-utils libnotify-tools xrandr xdg-user-dirs xdg-utils curl python3-gobject xdg-desktop-portal gstreamer-plugin-pipewire gstreamer-plugins-good typelib-1_0-Gst-1_0)
   [[ -n "$captura" ]] && paquetes+=("$captura")
   gris "sudo zypper install ${paquetes[*]}"; sudo zypper install -y "${paquetes[@]}"
 else
-  gris "No reconocí tu gestor de paquetes. Instala a mano: git, python3 (con venv), PipeWire (pw-record, pw-link, pw-dump), pactl, ImageMagick, notify-send y una herramienta de captura ($captura)."
+  gris "No reconocí tu gestor de paquetes. Instala a mano: git, python3 (con venv), PipeWire (pw-record, pw-link, pw-dump) o PulseAudio (parec), pactl, xdg-utils, notify-send y una herramienta de captura ($captura)."
 fi
 
-command -v pw-record >/dev/null || falla "Falta PipeWire (pw-record). Tomo necesita PipeWire para oír la reunión (viene por defecto en Ubuntu 22.10+, Fedora 34+, Arch y derivadas)."
+command -v pw-record >/dev/null || command -v parec >/dev/null || falla "Falta el audio del sistema: Tomo necesita PipeWire (pw-record) o PulseAudio (parec) para oír la reunión."
 
 # ------------------------------------------------------------------ código
 if [[ -d "$DESTINO/.git" ]]; then
