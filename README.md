@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="tomo/web/icono.svg" width="84" alt="Tomo">
+<img src="docs/logo.png" width="96" alt="Tomo">
 
 # Tomo 友
 
