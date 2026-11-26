@@ -36,8 +36,9 @@
   --r-in: 12px;
   --r-ctl: 10px;
   --sombra: 0 1px 2px rgba(11, 26, 51, .05), 0 10px 28px -16px rgba(3, 105, 161, .28);
-  --sans: "Outfit", system-ui, sans-serif;
-  --serif: "Shippori Mincho", "Noto Serif JP", Georgia, serif;
+  --sans: "Plus Jakarta Sans", system-ui, sans-serif;
+  --serif: "Plus Jakarta Sans", system-ui, sans-serif;
+  --kanji: "Shippori Mincho", "Noto Serif JP", serif;
   --mono: "JetBrains Mono", ui-monospace, monospace;
   --alto-barra: 56px;
 }
@@ -376,7 +377,7 @@ body::before { content: ""; position: fixed; inset: 0; pointer-events: none; z-i
               radial-gradient(700px 380px at -10% 110%, rgba(3, 105, 161, .08), transparent 60%); }
 .marca { gap: 10px; }
 .marca-nombre { font: 600 17px var(--sans); letter-spacing: -.01em; display: inline-flex; align-items: baseline; gap: 5px; }
-.marca-nombre i { font: 600 15px var(--serif); font-style: normal; background: var(--grad-texto); -webkit-background-clip: text;
+.marca-nombre i { font: 600 15px var(--kanji); font-style: normal; background: var(--grad-texto); -webkit-background-clip: text;
                   background-clip: text; color: transparent; }
 .marca-mirai { font: 500 10.5px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--tenue-2);
                border-left: 1px solid var(--borde); padding-left: 10px; }
@@ -450,7 +451,7 @@ body::before { content: ""; position: fixed; inset: 0; pointer-events: none; z-i
 .hoja-nov { width: min(560px, 100%); max-height: 86vh; overflow: auto; background: var(--hoja); border: 1px solid var(--borde); border-radius: 24px;
             box-shadow: 0 30px 80px -20px rgba(3, 30, 70, .55); animation: subir .55s cubic-bezier(.2, .9, .25, 1.1) both; position: relative; }
 .hoja-nov .cielo { position: relative; height: 150px; overflow: hidden; background: var(--grad-mirai); display: grid; place-items: center; }
-.hoja-nov .cielo .kanji { font: 600 76px var(--serif); color: rgba(255,255,255,.95); text-shadow: 0 6px 30px rgba(3,30,70,.35);
+.hoja-nov .cielo .kanji { font: 600 76px var(--kanji); color: rgba(255,255,255,.95); text-shadow: 0 6px 30px rgba(3,30,70,.35);
                           animation: flotar 4s ease-in-out infinite, entrar-kanji .8s cubic-bezier(.2,.9,.25,1.2) both; }
 .hoja-nov .cielo i { position: absolute; width: 6px; height: 6px; border-radius: 50%; background: #fff; opacity: 0; animation: chispa 2.6s ease-in-out infinite; }
 .hoja-nov .cuerpo { padding: 22px 26px 24px; }
@@ -475,3 +476,11 @@ body::before { content: ""; position: fixed; inset: 0; pointer-events: none; z-i
 @keyframes cargar { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
 @media (max-width: 640px) { .fila2 { grid-template-columns: 1fr; } .marca-mirai { display: none; } }
 .opciones > .sub:first-child, #r-modelos > .sub:first-child { margin-top: 0; }
+
+/* tipografía: una sola familia moderna (Plus Jakarta Sans); el kanji 友 conserva su mincho */
+.cab h1, .titulo h1 { font-weight: 700; letter-spacing: -.025em; }
+.cab h1 { font-size: 24px; }
+.titulo h1 { font-size: 38px; }
+.q-cual { font-weight: 700; font-size: 19px; letter-spacing: -.015em; }
+.hoja-nov h2 { font-weight: 700; letter-spacing: -.02em; }
+body { font-size: 14px; }
