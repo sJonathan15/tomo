@@ -52,10 +52,11 @@ function mdDoc(texto) {
       html += `<${tipo}>`;
       for (; i < lineas.length && /^\s*([-*+]|\d+[.)])\s+/.test(lineas[i]); i++) {
         const sangria = lineas[i].match(/^\s*/)[0].length >= 2 ? ' class="sub"' : "";
-        const item = lineas[i].replace(/^\s*([-*+]|\d+[.)])\s+/, "");
+        let item = lineas[i].replace(/^\s*([-*+]|\d+[.)])\s+/, "");
+        while (/^\s{2,}\S/.test(lineas[i + 1] || "") && !/^\s*([-*+]|\d+[.)])\s+/.test(lineas[i + 1])) item += "\n" + lineas[++i].trim();
         const tarea = item.match(/^\[( |x|X)\]\s+(.*)/);
         html += tarea ? `<li class="tarea"${sangria}><label><input type="checkbox" data-n-check="${i}" ${tarea[1] !== " " ? "checked" : ""}> <span>${inlineDoc(tarea[2])}</span></label></li>`
-          : `<li${sangria}>${inlineDoc(item)}</li>`;
+          : `<li${sangria}>${item.split("\n").map(inlineDoc).join("<br>")}</li>`;
       }
       html += `</${tipo}>`;
       continue;
